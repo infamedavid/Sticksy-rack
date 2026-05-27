@@ -7,7 +7,10 @@
 #include <functional>
 #include <memory>
 #include <filesystem>
+#include <fstream>
 #include <iomanip>
+#include <limits>
+#include <regex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -218,6 +221,81 @@ struct SticksyBlank5 : Module {
 
 	void loadStickerSvg(StickerEntry& entry) {
 		entry.svg = loadSvgWithFallback(entry.path);
+	}
+
+	math::Vec estimateStickerSize(const StickerEntry& entry) {
+		math::Vec size;
+		if (entry.svg) {
+			size = entry.svg->getSize();
+		}
+
+		auto isBad = [](float v) {
+			return !std::isfinite(v) || v <= 0.f || v > 100000.f;
+		};
+		if (!isBad(size.x) && !isBad(size.y))
+			return size;
+
+		std::ifstream file(entry.path);
+		if (file.is_open()) {
+			std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+			std::smatch match;
+			std::regex viewBoxRegex(R"(viewBox\s*=\s*["'][^"']*?(-?\d*\.?\d+)[ ,]+(-?\d*\.?\d+)[ ,]+(\d*\.?\d+)[ ,]+(\d*\.?\d+)[^"']*["'])", std::regex::icase);
+			if (std::regex_search(text, match, viewBoxRegex) && match.size() >= 5) {
+				float vw = std::stof(match[3].str());
+				float vh = std::stof(match[4].str());
+				if (!isBad(vw) && !isBad(vh))
+					return math::Vec(vw, vh);
+			}
+		}
+
+		return math::Vec(100.f, 100.f);
+	}
+
+	void assignPlacementForMultiple(StickerEntry& entry) {
+		const float panelW = RACK_GRID_WIDTH * 5.f;
+		const float panelH = RACK_GRID_HEIGHT;
+		entry.rotation = random::uniform() * 36.f - 18.f;
+
+		math::Vec size = estimateStickerSize(entry);
+		float absCos = std::fabs(std::cos(entry.rotation * DEG_TO_RAD));
+		float absSin = std::fabs(std::sin(entry.rotation * DEG_TO_RAD));
+		float rotW = size.x * absCos + size.y * absSin;
+		float rotH = size.x * absSin + size.y * absCos;
+		float area = std::max(rotW * rotH, 1.f);
+
+		auto visibleRatioAt = [&](float cx, float cy) {
+			float left = cx - rotW * 0.5f;
+			float right = cx + rotW * 0.5f;
+			float top = cy - rotH * 0.5f;
+			float bottom = cy + rotH * 0.5f;
+			float ix0 = std::max(left, 0.f);
+			float iy0 = std::max(top, 0.f);
+			float ix1 = std::min(right, panelW);
+			float iy1 = std::min(bottom, panelH);
+			float iw = std::max(0.f, ix1 - ix0);
+			float ih = std::max(0.f, iy1 - iy0);
+			return (iw * ih) / area;
+		};
+
+		float bestCx = panelW * 0.5f;
+		float bestCy = panelH * 0.5f;
+		float bestRatio = visibleRatioAt(bestCx, bestCy);
+
+		for (int i = 0; i < 20; i++) {
+			float cx = random::uniform() * (panelW + rotW) - rotW * 0.5f;
+			float cy = random::uniform() * (panelH + rotH) - rotH * 0.5f;
+			float ratio = visibleRatioAt(cx, cy);
+			if (ratio > bestRatio) {
+				bestRatio = ratio;
+				bestCx = cx;
+				bestCy = cy;
+			}
+			if (ratio >= 0.5f)
+				break;
+		}
+
+		entry.x = bestCx - panelW * 0.5f;
+		entry.y = bestCy - panelH * 0.5f;
 	}
 
 	json_t* dataToJson() override {
@@ -443,12 +521,10 @@ struct SticksyBlank5Widget : ModuleWidget {
 					StickerEntry entry;
 					entry.path = module->resolveStickerPathForLoad(path);
 					entry.displayName = system::getFilename(path);
+					module->loadStickerSvg(entry);
 					if (module->mode == SticksyBlank5::MODE_MULTIPLE) {
-						entry.x = random::uniform() * 30.f - 15.f;
-						entry.y = random::uniform() * 40.f - 20.f;
-						entry.rotation = random::uniform() * 36.f - 18.f;
+						module->assignPlacementForMultiple(entry);
 					}
-						module->loadStickerSvg(entry);
 					moduleWidget->pushModuleChange(module, "load Sticksy SVG", [&]() {
 						if (module->mode == SticksyBlank5::MODE_SINGLE)
 							module->replaceSingleSticker(entry);
