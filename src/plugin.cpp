@@ -84,8 +84,10 @@ struct SticksyBlankModule : Module {
 		if(filename.empty()) return sourcePath;
 		std::string ext=system::getExtension(filename);
 		std::string stem=ext.empty()?filename:filename.substr(0,filename.size()-ext.size());
-		std::string libraryDir=asset::user("Sticksy/stickers");
-		system::createDirectory(libraryDir);
+		std::string sticksyDir=asset::user("Sticksy");
+		if(!system::exists(sticksyDir) && !system::createDirectory(sticksyDir)) return sourcePath;
+		std::string libraryDir=system::join(sticksyDir,"stickers");
+		if(!system::exists(libraryDir) && !system::createDirectory(libraryDir)) return sourcePath;
 		std::string candidate=system::join(libraryDir,filename); int suffix=1;
 		while(system::exists(candidate)){ std::ostringstream name; name<<stem<<"_"<<std::setfill('0')<<std::setw(3)<<suffix++<<ext; candidate=system::join(libraryDir,name.str()); }
 		if(!system::copy(sourcePath,candidate)) return sourcePath;
