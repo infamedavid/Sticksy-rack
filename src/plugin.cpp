@@ -191,6 +191,33 @@ struct SetBackgroundAction : history::ModuleAction {
 	void redo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setBackground(newBackground); }
 };
 
+struct DeleteStickerAction : history::ModuleAction {
+	int stickerIndex = -1;
+	StickerEntry deletedSticker;
+
+	void undo() override {
+		Module* baseModule = APP->engine->getModule(moduleId);
+		auto* module = dynamic_cast<SticksyBlank5*>(baseModule);
+		if (!module)
+			return;
+		if (stickerIndex < 0 || stickerIndex > (int) module->stickers.size())
+			return;
+		module->stickers.insert(module->stickers.begin() + stickerIndex, deletedSticker);
+		module->stickerVersion++;
+	}
+
+	void redo() override {
+		Module* baseModule = APP->engine->getModule(moduleId);
+		auto* module = dynamic_cast<SticksyBlank5*>(baseModule);
+		if (!module)
+			return;
+		if (stickerIndex < 0 || stickerIndex >= (int) module->stickers.size())
+			return;
+		module->stickers.erase(module->stickers.begin() + stickerIndex);
+		module->stickerVersion++;
+	}
+};
+
 struct StickerCanvas : Widget {
 	SticksyBlank5* module = NULL;
 
@@ -305,6 +332,55 @@ struct SticksyBlank5Widget : ModuleWidget {
 		auto* loadItem = createMenuItem<LoadSvgItem>("Load SVG...");
 		loadItem->module = module;
 		menu->addChild(loadItem);
+
+		menu->addChild(new MenuSeparator());
+		MenuLabel* loadedLabel = new MenuLabel();
+		loadedLabel->text = "Loaded SVGs";
+		menu->addChild(loadedLabel);
+
+		if (module && module->stickers.empty()) {
+			auto* noneItem = createMenuItem<MenuItem>("(none)");
+			noneItem->disabled = true;
+			menu->addChild(noneItem);
+		}
+
+		struct StickerItem : MenuItem {
+			SticksyBlank5* module;
+			int index = -1;
+
+			Menu* createChildMenu() override {
+				Menu* submenu = new Menu;
+				struct DeleteItem : MenuItem {
+					SticksyBlank5* module;
+					int index = -1;
+					void onAction(const event::Action& e) override {
+						if (!module || index < 0 || index >= (int) module->stickers.size())
+							return;
+						auto* action = new DeleteStickerAction();
+						action->name = "delete Sticksy sticker";
+						action->moduleId = module->id;
+						action->stickerIndex = index;
+						action->deletedSticker = module->stickers[index];
+						APP->history->push(action);
+					}
+				};
+				auto* deleteItem = createMenuItem<DeleteItem>("Delete");
+				deleteItem->module = module;
+				deleteItem->index = index;
+				deleteItem->disabled = !module || index < 0 || index >= (int) module->stickers.size();
+				submenu->addChild(deleteItem);
+				return submenu;
+			}
+		};
+
+		if (module) {
+			for (int i = 0; i < (int) module->stickers.size(); i++) {
+				auto* item = createMenuItem<StickerItem>(module->stickers[i].displayName, RIGHT_ARROW);
+				item->module = module;
+				item->index = i;
+				menu->addChild(item);
+			}
+		}
 
 		menu->addChild(new MenuSeparator());
 		MenuLabel* label = new MenuLabel();
