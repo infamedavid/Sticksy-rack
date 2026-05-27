@@ -1,0 +1,39 @@
+{
+  "slug": "Sticksy",
+  "name": "Sticksy",
+  "version": "0.1.0",
+  "author": "InfameDavid",
+  "brand": "InfameDavid",
+  "authorUrl": "",
+  "pluginUrl": "",
+  "manualUrl": "",
+  "sourceUrl": "",
+  "donateUrl": "",
+  "changelogUrl": "",
+  "modules": [
+    {
+      "slug": "SticksyBlank3",
+      "name": "Sticksy Blank 3HP",
+      "description": "Decorative blank panel.",
+      "tags": ["Blank"]
+    },
+    {
+      "slug": "SticksyBlank5",
+      "name": "Sticksy Blank 5HP",
+      "description": "Decorative blank panel.",
+      "tags": ["Blank"]
+    },
+    {
+      "slug": "SticksyBlank9",
+      "name": "Sticksy Blank 9HP",
+      "description": "Decorative blank panel.",
+      "tags": ["Blank"]
+    },
+    {
+      "slug": "SticksyBlank12",
+      "name": "Sticksy Blank 12HP",
+      "description": "Decorative blank panel.",
+      "tags": ["Blank"]
+    }
+  ]
+}
