@@ -298,6 +298,15 @@ struct SticksyBlank5 : Module {
 		entry.y = bestCy - panelH * 0.5f;
 	}
 
+	void shakeMultipleStickers() {
+		if (mode != MODE_MULTIPLE || stickers.empty())
+			return;
+		for (StickerEntry& entry : stickers) {
+			assignPlacementForMultiple(entry);
+		}
+		stickerVersion++;
+	}
+
 	json_t* dataToJson() override {
 		json_t* rootJ = json_object();
 		json_object_set_new(rootJ, "background", json_string(backgroundKey().c_str()));
@@ -534,11 +543,31 @@ struct SticksyBlank5Widget : ModuleWidget {
 				}
 			};
 
-		auto* loadItem = createMenuItem<LoadSvgItem>("Load SVG...");
-		loadItem->module = module;
-		menu->addChild(loadItem);
+			auto* loadItem = createMenuItem<LoadSvgItem>("Load SVG...");
+			loadItem->module = module;
+			menu->addChild(loadItem);
 
-		menu->addChild(new MenuSeparator());
+			if (module && module->mode == SticksyBlank5::MODE_MULTIPLE) {
+				struct ShakeItem : MenuItem {
+					SticksyBlank5* module;
+					void onAction(const event::Action& e) override {
+						if (!module || module->mode != SticksyBlank5::MODE_MULTIPLE || module->stickers.empty())
+							return;
+						moduleWidget->pushModuleChange(module, "shake Sticksy stickers", [&]() {
+							module->shakeMultipleStickers();
+						});
+					}
+					void step() override {
+						MenuItem::step();
+						disabled = !module || module->mode != SticksyBlank5::MODE_MULTIPLE || module->stickers.empty();
+					}
+				};
+				auto* shakeItem = createMenuItem<ShakeItem>("Shake");
+				shakeItem->module = module;
+				menu->addChild(shakeItem);
+			}
+
+			menu->addChild(new MenuSeparator());
 		MenuLabel* storageLabel = new MenuLabel();
 		storageLabel->text = "Storage";
 		menu->addChild(storageLabel);
