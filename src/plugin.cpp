@@ -78,12 +78,30 @@ struct SticksyBlank5 : Module {
 	void setMode(Mode newMode) {
 		if (newMode < 0 || newMode >= NUM_MODES)
 			newMode = MODE_SINGLE;
-		if (newMode == MODE_MULTIPLE)
-			newMode = MODE_SINGLE;
+		if (!stickers.empty())
+			return;
 		if (mode == newMode)
 			return;
 		mode = newMode;
 		stickerVersion++;
+	}
+
+	static const std::vector<std::string>& modeKeys() {
+		static const std::vector<std::string> keys = {"single", "multiple"};
+		return keys;
+	}
+
+	static Mode modeFromKey(const std::string& key) {
+		const auto& keys = modeKeys();
+		for (int i = 0; i < (int) keys.size(); i++) {
+			if (keys[i] == key)
+				return (Mode) i;
+		}
+		return MODE_SINGLE;
+	}
+
+	std::string modeKey() const {
+		return modeKeys()[mode];
 	}
 
 	void replaceSingleSticker(const StickerEntry& entry) {
@@ -121,7 +139,7 @@ struct SticksyBlank5 : Module {
 	json_t* dataToJson() override {
 		json_t* rootJ = json_object();
 		json_object_set_new(rootJ, "background", json_string(backgroundKey().c_str()));
-		json_object_set_new(rootJ, "mode", json_string("single"));
+		json_object_set_new(rootJ, "mode", json_string(modeKey().c_str()));
 
 		json_t* stickersJ = json_array();
 		if (!stickers.empty()) {
@@ -148,10 +166,10 @@ struct SticksyBlank5 : Module {
 		json_t* modeJ = json_object_get(rootJ, "mode");
 		if (modeJ && json_is_string(modeJ)) {
 			std::string modeKey = json_string_value(modeJ);
-			setMode(modeKey == "single" ? MODE_SINGLE : MODE_SINGLE);
+			mode = modeFromKey(modeKey);
 		}
 		else {
-			setMode(MODE_SINGLE);
+			mode = MODE_SINGLE;
 		}
 
 		clearStickers();
@@ -189,6 +207,13 @@ struct SetBackgroundAction : history::ModuleAction {
 	SticksyBlank5::Background newBackground;
 	void undo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setBackground(oldBackground); }
 	void redo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setBackground(newBackground); }
+};
+
+struct SetModeAction : history::ModuleAction {
+	SticksyBlank5::Mode oldMode;
+	SticksyBlank5::Mode newMode;
+	void undo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setMode(oldMode); }
+	void redo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setMode(newMode); }
 };
 
 struct DeleteStickerAction : history::ModuleAction {
@@ -286,10 +311,18 @@ struct SticksyBlank5Widget : ModuleWidget {
 			void onAction(const event::Action& e) override {
 				if (!module)
 					return;
-				module->setMode(mode);
+				if (!module->stickers.empty() || module->mode == mode)
+					return;
+				auto* action = new SetModeAction();
+				action->name = "change Sticksy mode";
+				action->moduleId = module->id;
+				action->oldMode = module->mode;
+				action->newMode = mode;
+				APP->history->push(action);
 			}
 			void step() override {
 				MenuItem::step();
+				disabled = module && !module->stickers.empty() && module->mode != mode;
 				rightText = (module && module->mode == mode) ? "✔" : "";
 			}
 		};
@@ -299,9 +332,16 @@ struct SticksyBlank5Widget : ModuleWidget {
 		singleItem->mode = SticksyBlank5::MODE_SINGLE;
 		menu->addChild(singleItem);
 
-		auto* multipleItem = createMenuItem<MenuItem>("Multiple");
-		multipleItem->disabled = true;
+		auto* multipleItem = createMenuItem<ModeItem>("Multiple");
+		multipleItem->module = module;
+		multipleItem->mode = SticksyBlank5::MODE_MULTIPLE;
 		menu->addChild(multipleItem);
+
+		if (module && !module->stickers.empty()) {
+			auto* modeHint = createMenuItem<MenuItem>("Delete loaded SVGs first");
+			modeHint->disabled = true;
+			menu->addChild(modeHint);
+		}
 
 		struct LoadSvgItem : MenuItem {
 			SticksyBlank5* module;
@@ -317,15 +357,11 @@ struct SticksyBlank5Widget : ModuleWidget {
 					return;
 				if (string::lowercase(system::getExtension(path)) != ".svg")
 					return;
-				try {
-					StickerEntry entry;
-					entry.path = path;
-					entry.displayName = system::getFilename(path);
-					entry.svg = APP->window->loadSvg(path);
-					module->replaceSingleSticker(entry);
-				}
-				catch (...) {
-				}
+				StickerEntry entry;
+				entry.path = path;
+				entry.displayName = system::getFilename(path);
+				module->loadStickerSvg(entry);
+				module->replaceSingleSticker(entry);
 			}
 		};
 
