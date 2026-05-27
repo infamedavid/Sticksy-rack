@@ -6,6 +6,9 @@
 #include <cstdlib>
 #include <functional>
 #include <memory>
+#include <filesystem>
+#include <iomanip>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -40,8 +43,15 @@ struct SticksyBlank5 : Module {
 		NUM_MODES
 	};
 
+	enum StorageMode {
+		STORAGE_REFERENCED,
+		STORAGE_STICKSY_LIBRARY,
+		NUM_STORAGE_MODES
+	};
+
 	Background background = BACKGROUND_METAL;
 	Mode mode = MODE_SINGLE;
+	StorageMode storageMode = STORAGE_REFERENCED;
 	std::vector<StickerEntry> stickers;
 	int panelVersion = 0;
 	int stickerVersion = 0;
@@ -108,6 +118,66 @@ struct SticksyBlank5 : Module {
 		return modeKeys()[mode];
 	}
 
+	static const std::vector<std::string>& storageModeKeys() {
+		static const std::vector<std::string> keys = {"referenced", "library"};
+		return keys;
+	}
+
+	static StorageMode storageModeFromKey(const std::string& key) {
+		const auto& keys = storageModeKeys();
+		for (int i = 0; i < (int) keys.size(); i++) {
+			if (keys[i] == key)
+				return (StorageMode) i;
+		}
+		return STORAGE_REFERENCED;
+	}
+
+	std::string storageModeKey() const {
+		return storageModeKeys()[storageMode];
+	}
+
+	void setStorageMode(StorageMode newStorageMode) {
+		if (newStorageMode < 0 || newStorageMode >= NUM_STORAGE_MODES)
+			newStorageMode = STORAGE_REFERENCED;
+		if (storageMode == newStorageMode)
+			return;
+		storageMode = newStorageMode;
+		stickerVersion++;
+	}
+
+	std::string ensureLibraryCopyPath(const std::string& sourcePath) {
+		std::filesystem::path source = std::filesystem::u8path(sourcePath);
+		std::string filename = source.filename().u8string();
+		std::string stem = source.stem().u8string();
+		std::string ext = source.extension().u8string();
+		std::filesystem::path libraryDir = std::filesystem::u8path(asset::user("Sticksy/stickers"));
+		std::error_code ec;
+		std::filesystem::create_directories(libraryDir, ec);
+		if (ec)
+			return sourcePath;
+
+		std::filesystem::path candidate = libraryDir / filename;
+		int suffix = 1;
+		while (std::filesystem::exists(candidate, ec)) {
+			if (ec)
+				return sourcePath;
+			std::ostringstream name;
+			name << stem << "_" << std::setfill('0') << std::setw(3) << suffix++ << ext;
+			candidate = libraryDir / name.str();
+		}
+
+		std::filesystem::copy_file(source, candidate, std::filesystem::copy_options::none, ec);
+		if (ec)
+			return sourcePath;
+		return candidate.u8string();
+	}
+
+	std::string resolveStickerPathForLoad(const std::string& selectedPath) {
+		if (storageMode == STORAGE_STICKSY_LIBRARY)
+			return ensureLibraryCopyPath(selectedPath);
+		return selectedPath;
+	}
+
 	void replaceSingleSticker(const StickerEntry& entry) {
 		stickers.clear();
 		stickers.push_back(entry);
@@ -148,6 +218,7 @@ struct SticksyBlank5 : Module {
 		json_t* rootJ = json_object();
 		json_object_set_new(rootJ, "background", json_string(backgroundKey().c_str()));
 		json_object_set_new(rootJ, "mode", json_string(modeKey().c_str()));
+		json_object_set_new(rootJ, "storageMode", json_string(storageModeKey().c_str()));
 
 		json_t* stickersJ = json_array();
 		if (!stickers.empty()) {
@@ -179,6 +250,11 @@ struct SticksyBlank5 : Module {
 		else {
 			mode = MODE_SINGLE;
 		}
+		json_t* storageModeJ = json_object_get(rootJ, "storageMode");
+		if (storageModeJ && json_is_string(storageModeJ))
+			storageMode = storageModeFromKey(json_string_value(storageModeJ));
+		else
+			storageMode = STORAGE_REFERENCED;
 
 		clearStickers();
 		json_t* stickersJ = json_object_get(rootJ, "stickers");
@@ -335,11 +411,11 @@ struct SticksyBlank5Widget : ModuleWidget {
 					return;
 				if (string::lowercase(system::getExtension(path)) != ".svg")
 					return;
-				StickerEntry entry;
-				entry.path = path;
-				entry.displayName = system::getFilename(path);
-				module->loadStickerSvg(entry);
-				module->replaceSingleSticker(entry);
+					StickerEntry entry;
+					entry.path = module->resolveStickerPathForLoad(path);
+					entry.displayName = system::getFilename(path);
+					module->loadStickerSvg(entry);
+					module->replaceSingleSticker(entry);
 			}
 			void step() override {
 				MenuItem::step();
@@ -350,6 +426,37 @@ struct SticksyBlank5Widget : ModuleWidget {
 		auto* loadItem = createMenuItem<LoadSvgItem>("Load SVG...");
 		loadItem->module = module;
 		menu->addChild(loadItem);
+
+		menu->addChild(new MenuSeparator());
+		MenuLabel* storageLabel = new MenuLabel();
+		storageLabel->text = "Storage";
+		menu->addChild(storageLabel);
+
+		struct StorageModeItem : MenuItem {
+			SticksyBlank5* module;
+			SticksyBlank5::StorageMode storageMode;
+			void onAction(const event::Action& e) override {
+				if (!module || module->storageMode == storageMode)
+					return;
+				moduleWidget->pushModuleChange(module, "change Sticksy storage mode", [&]() {
+					module->setStorageMode(storageMode);
+				});
+			}
+			void step() override {
+				MenuItem::step();
+				rightText = (module && module->storageMode == storageMode) ? "✔" : "";
+			}
+		};
+
+		auto* referencedItem = createMenuItem<StorageModeItem>("Referenced");
+		referencedItem->module = module;
+		referencedItem->storageMode = SticksyBlank5::STORAGE_REFERENCED;
+		menu->addChild(referencedItem);
+
+		auto* libraryItem = createMenuItem<StorageModeItem>("Save in Sticksy Library");
+		libraryItem->module = module;
+		libraryItem->storageMode = SticksyBlank5::STORAGE_STICKSY_LIBRARY;
+		menu->addChild(libraryItem);
 
 		menu->addChild(new MenuSeparator());
 		MenuLabel* loadedLabel = new MenuLabel();
