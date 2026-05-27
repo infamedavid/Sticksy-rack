@@ -2,6 +2,10 @@
 
 #include <osdialog.h>
 
+#include <cmath>
+#include <cstdlib>
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -15,7 +19,7 @@ struct StickerEntry {
 	float x = 0.f;
 	float y = 0.f;
 	float rotation = 0.f;
-	std::shared_ptr<Svg> svg;
+	std::shared_ptr<window::Svg> svg;
 };
 
 struct SticksyBlank5 : Module {
@@ -117,8 +121,8 @@ struct SticksyBlank5 : Module {
 		stickerVersion++;
 	}
 
-	std::shared_ptr<Svg> loadSvgWithFallback(const std::string& path) {
-		std::shared_ptr<Svg> loaded;
+	std::shared_ptr<window::Svg> loadSvgWithFallback(const std::string& path) {
+		std::shared_ptr<window::Svg> loaded;
 		if (!path.empty()) {
 			try {
 				loaded = APP->window->loadSvg(path);
@@ -127,7 +131,11 @@ struct SticksyBlank5 : Module {
 			}
 		}
 		if (!loaded) {
-			loaded = APP->window->loadSvg(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH));
+			try {
+				loaded = APP->window->loadSvg(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH));
+			}
+			catch (...) {
+			}
 		}
 		return loaded;
 	}
@@ -202,47 +210,6 @@ struct SticksyBlank5 : Module {
 	}
 };
 
-struct SetBackgroundAction : history::ModuleAction {
-	SticksyBlank5::Background oldBackground;
-	SticksyBlank5::Background newBackground;
-	void undo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setBackground(oldBackground); }
-	void redo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setBackground(newBackground); }
-};
-
-struct SetModeAction : history::ModuleAction {
-	SticksyBlank5::Mode oldMode;
-	SticksyBlank5::Mode newMode;
-	void undo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setMode(oldMode); }
-	void redo() override { if (auto* m = dynamic_cast<SticksyBlank5*>(APP->engine->getModule(moduleId))) m->setMode(newMode); }
-};
-
-struct DeleteStickerAction : history::ModuleAction {
-	int stickerIndex = -1;
-	StickerEntry deletedSticker;
-
-	void undo() override {
-		Module* baseModule = APP->engine->getModule(moduleId);
-		auto* module = dynamic_cast<SticksyBlank5*>(baseModule);
-		if (!module)
-			return;
-		if (stickerIndex < 0 || stickerIndex > (int) module->stickers.size())
-			return;
-		module->stickers.insert(module->stickers.begin() + stickerIndex, deletedSticker);
-		module->stickerVersion++;
-	}
-
-	void redo() override {
-		Module* baseModule = APP->engine->getModule(moduleId);
-		auto* module = dynamic_cast<SticksyBlank5*>(baseModule);
-		if (!module)
-			return;
-		if (stickerIndex < 0 || stickerIndex >= (int) module->stickers.size())
-			return;
-		module->stickers.erase(module->stickers.begin() + stickerIndex);
-		module->stickerVersion++;
-	}
-};
-
 struct StickerCanvas : Widget {
 	SticksyBlank5* module = NULL;
 
@@ -266,6 +233,18 @@ struct SticksyBlank5Widget : ModuleWidget {
 	int lastPanelVersion = -1;
 	int lastStickerVersion = -1;
 	StickerCanvas* stickerCanvas = NULL;
+
+	void pushModuleChange(SticksyBlank5* module, const std::string& name, std::function<void()> applyChange) {
+		if (!module)
+			return;
+		history::ModuleChange* h = new history::ModuleChange;
+		h->name = name;
+		h->moduleId = module->id;
+		h->oldModuleJ = module->toJson();
+		applyChange();
+		h->newModuleJ = module->toJson();
+		APP->history->push(h);
+	}
 
 	void applyPanelForBackground(SticksyBlank5::Background background) {
 		const auto& key = SticksyBlank5::backgroundKeys()[background];
@@ -313,12 +292,9 @@ struct SticksyBlank5Widget : ModuleWidget {
 					return;
 				if (!module->stickers.empty() || module->mode == mode)
 					return;
-				auto* action = new SetModeAction();
-				action->name = "change Sticksy mode";
-				action->moduleId = module->id;
-				action->oldMode = module->mode;
-				action->newMode = mode;
-				APP->history->push(action);
+				moduleWidget->pushModuleChange(module, "change Sticksy mode", [&]() {
+					module->setMode(mode);
+				});
 			}
 			void step() override {
 				MenuItem::step();
@@ -348,6 +324,8 @@ struct SticksyBlank5Widget : ModuleWidget {
 			void onAction(const event::Action& e) override {
 				if (!module)
 					return;
+				if (module->mode == SticksyBlank5::MODE_MULTIPLE)
+					return;
 				char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, "Scalable Vector Graphic (.svg):svg");
 				if (!pathC)
 					return;
@@ -362,6 +340,10 @@ struct SticksyBlank5Widget : ModuleWidget {
 				entry.displayName = system::getFilename(path);
 				module->loadStickerSvg(entry);
 				module->replaceSingleSticker(entry);
+			}
+			void step() override {
+				MenuItem::step();
+				disabled = module && module->mode == SticksyBlank5::MODE_MULTIPLE;
 			}
 		};
 
@@ -392,12 +374,10 @@ struct SticksyBlank5Widget : ModuleWidget {
 					void onAction(const event::Action& e) override {
 						if (!module || index < 0 || index >= (int) module->stickers.size())
 							return;
-						auto* action = new DeleteStickerAction();
-						action->name = "delete Sticksy sticker";
-						action->moduleId = module->id;
-						action->stickerIndex = index;
-						action->deletedSticker = module->stickers[index];
-						APP->history->push(action);
+						moduleWidget->pushModuleChange(module, "delete Sticksy sticker", [&]() {
+							module->stickers.erase(module->stickers.begin() + index);
+							module->stickerVersion++;
+						});
 					}
 				};
 				auto* deleteItem = createMenuItem<DeleteItem>("Delete");
@@ -429,12 +409,9 @@ struct SticksyBlank5Widget : ModuleWidget {
 			void onAction(const event::Action& e) override {
 				if (!module || module->background == background)
 					return;
-				auto* action = new SetBackgroundAction();
-				action->name = "change Sticksy background";
-				action->moduleId = module->id;
-				action->oldBackground = module->background;
-				action->newBackground = background;
-				APP->history->push(action);
+				moduleWidget->pushModuleChange(module, "change Sticksy background", [&]() {
+					module->setBackground(background);
+				});
 			}
 			void step() override {
 				MenuItem::step();
