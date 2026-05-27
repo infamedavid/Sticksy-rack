@@ -15,6 +15,7 @@
 Plugin* pluginInstance;
 
 static const std::string FALLBACK_STICKER_PATH = "res/fallback/Sticksy.svg";
+static constexpr float DEG_TO_RAD = 0.01745329251994329577f;
 
 struct StickerEntry {
 	std::string path;
@@ -184,6 +185,11 @@ struct SticksyBlank5 : Module {
 		stickerVersion++;
 	}
 
+	void addMultipleSticker(const StickerEntry& entry) {
+		stickers.push_back(entry);
+		stickerVersion++;
+	}
+
 	void clearStickers() {
 		if (stickers.empty())
 			return;
@@ -221,8 +227,7 @@ struct SticksyBlank5 : Module {
 		json_object_set_new(rootJ, "storageMode", json_string(storageModeKey().c_str()));
 
 		json_t* stickersJ = json_array();
-		if (!stickers.empty()) {
-			const StickerEntry& sticker = stickers[0];
+		for (const StickerEntry& sticker : stickers) {
 			json_t* stickerJ = json_object();
 			json_object_set_new(stickerJ, "path", json_string(sticker.path.c_str()));
 			json_object_set_new(stickerJ, "displayName", json_string(sticker.displayName.c_str()));
@@ -258,9 +263,12 @@ struct SticksyBlank5 : Module {
 
 		clearStickers();
 		json_t* stickersJ = json_object_get(rootJ, "stickers");
-		if (stickersJ && json_is_array(stickersJ) && json_array_size(stickersJ) > 0) {
-			json_t* stickerJ = json_array_get(stickersJ, 0);
-			if (stickerJ && json_is_object(stickerJ)) {
+		if (stickersJ && json_is_array(stickersJ)) {
+			size_t stickerCount = json_array_size(stickersJ);
+			for (size_t i = 0; i < stickerCount; i++) {
+				json_t* stickerJ = json_array_get(stickersJ, i);
+				if (!stickerJ || !json_is_object(stickerJ))
+					continue;
 				json_t* pathJ = json_object_get(stickerJ, "path");
 				if (pathJ && json_is_string(pathJ)) {
 					StickerEntry entry;
@@ -276,7 +284,11 @@ struct SticksyBlank5 : Module {
 						entry.rotation = json_number_value(rotationJ);
 
 					loadStickerSvg(entry);
-					replaceSingleSticker(entry);
+					if (mode == MODE_SINGLE) {
+						replaceSingleSticker(entry);
+						break;
+					}
+					addMultipleSticker(entry);
 				}
 			}
 		}
@@ -292,13 +304,32 @@ struct StickerCanvas : Widget {
 	void draw(const DrawArgs& args) override {
 		nvgSave(args.vg);
 		nvgScissor(args.vg, 0.f, 0.f, box.size.x, box.size.y);
-		if (module && !module->stickers.empty() && module->stickers[0].svg) {
-			auto svg = module->stickers[0].svg;
-			math::Vec size = svg->getSize();
-			nvgSave(args.vg);
-			nvgTranslate(args.vg, std::round((box.size.x - size.x) * 0.5f), std::round((box.size.y - size.y) * 0.5f));
-			svg->draw(args.vg);
-			nvgRestore(args.vg);
+		if (module && !module->stickers.empty()) {
+			if (module->mode == SticksyBlank5::MODE_SINGLE) {
+				if (module->stickers[0].svg) {
+					auto svg = module->stickers[0].svg;
+					math::Vec size = svg->getSize();
+					nvgSave(args.vg);
+					nvgTranslate(args.vg, std::round((box.size.x - size.x) * 0.5f), std::round((box.size.y - size.y) * 0.5f));
+					svg->draw(args.vg);
+					nvgRestore(args.vg);
+				}
+			}
+			else {
+				for (const StickerEntry& sticker : module->stickers) {
+					if (!sticker.svg)
+						continue;
+					math::Vec size = sticker.svg->getSize();
+					float x = std::round((box.size.x - size.x) * 0.5f + sticker.x);
+					float y = std::round((box.size.y - size.y) * 0.5f + sticker.y);
+					nvgSave(args.vg);
+					nvgTranslate(args.vg, x + size.x * 0.5f, y + size.y * 0.5f);
+					nvgRotate(args.vg, sticker.rotation * DEG_TO_RAD);
+					nvgTranslate(args.vg, -size.x * 0.5f, -size.y * 0.5f);
+					sticker.svg->draw(args.vg);
+					nvgRestore(args.vg);
+				}
+			}
 		}
 		nvgRestore(args.vg);
 		Widget::draw(args);
@@ -397,31 +428,35 @@ struct SticksyBlank5Widget : ModuleWidget {
 
 		struct LoadSvgItem : MenuItem {
 			SticksyBlank5* module;
-			void onAction(const event::Action& e) override {
-				if (!module)
-					return;
-				if (module->mode == SticksyBlank5::MODE_MULTIPLE)
-					return;
-				char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, "Scalable Vector Graphic (.svg):svg");
+				void onAction(const event::Action& e) override {
+					if (!module)
+						return;
+					char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, "Scalable Vector Graphic (.svg):svg");
 				if (!pathC)
 					return;
 				std::string path = pathC;
 				std::free(pathC);
-				if (path.empty())
-					return;
-				if (string::lowercase(system::getExtension(path)) != ".svg")
-					return;
+					if (path.empty())
+						return;
+					if (string::lowercase(system::getExtension(path)) != ".svg")
+						return;
 					StickerEntry entry;
 					entry.path = module->resolveStickerPathForLoad(path);
 					entry.displayName = system::getFilename(path);
-					module->loadStickerSvg(entry);
-					module->replaceSingleSticker(entry);
-			}
-			void step() override {
-				MenuItem::step();
-				disabled = module && module->mode == SticksyBlank5::MODE_MULTIPLE;
-			}
-		};
+					if (module->mode == SticksyBlank5::MODE_MULTIPLE) {
+						entry.x = random::uniform() * 30.f - 15.f;
+						entry.y = random::uniform() * 40.f - 20.f;
+						entry.rotation = random::uniform() * 36.f - 18.f;
+					}
+						module->loadStickerSvg(entry);
+					moduleWidget->pushModuleChange(module, "load Sticksy SVG", [&]() {
+						if (module->mode == SticksyBlank5::MODE_SINGLE)
+							module->replaceSingleSticker(entry);
+						else
+							module->addMultipleSticker(entry);
+					});
+				}
+			};
 
 		auto* loadItem = createMenuItem<LoadSvgItem>("Load SVG...");
 		loadItem->module = module;
