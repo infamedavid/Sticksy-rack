@@ -7,6 +7,8 @@
 
 Plugin* pluginInstance;
 
+static const std::string FALLBACK_STICKER_PATH = "res/fallback/Sticksy.svg";
+
 struct StickerEntry {
 	std::string path;
 	std::string displayName;
@@ -97,6 +99,25 @@ struct SticksyBlank5 : Module {
 		stickerVersion++;
 	}
 
+	std::shared_ptr<Svg> loadSvgWithFallback(const std::string& path) {
+		std::shared_ptr<Svg> loaded;
+		if (!path.empty()) {
+			try {
+				loaded = APP->window->loadSvg(path);
+			}
+			catch (...) {
+			}
+		}
+		if (!loaded) {
+			loaded = APP->window->loadSvg(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH));
+		}
+		return loaded;
+	}
+
+	void loadStickerSvg(StickerEntry& entry) {
+		entry.svg = loadSvgWithFallback(entry.path);
+	}
+
 	json_t* dataToJson() override {
 		json_t* rootJ = json_object();
 		json_object_set_new(rootJ, "background", json_string(backgroundKey().c_str()));
@@ -152,13 +173,8 @@ struct SticksyBlank5 : Module {
 					if (json_t* rotationJ = json_object_get(stickerJ, "rotation"); rotationJ && json_is_number(rotationJ))
 						entry.rotation = json_number_value(rotationJ);
 
-					try {
-						entry.svg = APP->window->loadSvg(entry.path);
-						replaceSingleSticker(entry);
-					}
-					catch (...) {
-						clearStickers();
-					}
+					loadStickerSvg(entry);
+					replaceSingleSticker(entry);
 				}
 			}
 		}
