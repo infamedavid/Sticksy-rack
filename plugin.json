@@ -1,0 +1,21 @@
+{
+  "slug": "Sticksy",
+  "name": "Sticksy",
+  "version": "0.1.0",
+  "author": "InfameDavid",
+  "brand": "InfameDavid",
+  "authorUrl": "",
+  "pluginUrl": "",
+  "manualUrl": "",
+  "sourceUrl": "",
+  "donateUrl": "",
+  "changelogUrl": "",
+  "modules": [
+    {
+      "slug": "SticksyBlank5",
+      "name": "Sticksy Blank 5HP",
+      "description": "Decorative blank panel.",
+      "tags": ["Blank"]
+    }
+  ]
+}
