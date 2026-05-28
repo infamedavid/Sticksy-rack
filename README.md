@@ -10,6 +10,7 @@ It provides blank panel modules that let you place visual stickers on your patch
 - Sticksy Blank 5HP
 - Sticksy Blank 9HP
 - Sticksy Blank 12HP
+- Sticksy Flipbook 12HP
 
 ## How it works
 
@@ -50,3 +51,44 @@ It provides blank panel modules that let you place visual stickers on your patch
 - **Save in Sticksy Library**: copies the SVG to Sticksy’s user folder.
 - SVG content is not embedded in the patch.
 - If a sticker file is missing or invalid, Sticksy uses the `Sticksy.svg` fallback.
+
+## Sticksy Flipbook
+
+Sticksy Flipbook is a clocked SVG flipbook module. It is decorative and does not process audio.
+
+- Width: **12HP**
+- Input: **CLK**
+- Output: **EOC**
+
+### Loading frames
+
+- Right-click and choose **Load Flipbook Image...**
+- If the selected file ends with a numeric suffix, Sticksy Flipbook auto-detects a sequence in the same folder.
+- Examples:
+  - `dog01.svg`, `dog02.svg`, `dog03.svg`
+  - `frame1.svg`, `frame2.svg`, `frame10.svg` (numeric ordering)
+- If there is no numeric suffix, only the selected SVG is loaded.
+- Maximum sequence length is **128 frames**.
+
+### Play Modes
+
+- **Forward**
+- **Reverse**
+- **Ping Pong**
+- **Random**
+
+### EOC
+
+- **EOC** emits a short pulse when a cycle completes according to the selected Play Mode.
+
+### Optional static background
+
+- **Load Background Image...** loads one static SVG background.
+- **Clear Background** removes it.
+- Background is drawn behind the current frame.
+
+### Sizing and clipping
+
+- SVGs are centered at real size (no scaling).
+- Oversized SVGs are clipped to module bounds.
+- Prepare SVGs at your intended visual size.
