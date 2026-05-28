@@ -241,7 +241,9 @@ struct SticksyFlipbookModule : Module {
 	int currentFrameIndex = 0;
 	PlayMode playMode = PLAY_FORWARD;
 	int pingDirection = 1;
+	int randomCycleCounter = 0;
 	dsp::SchmittTrigger clkTrigger;
+	dsp::PulseGenerator eocPulse;
 	int frameVersion = 0;
 
 	SticksyFlipbookModule() {
@@ -270,6 +272,7 @@ struct SticksyFlipbookModule : Module {
 
 	void setFrames(const std::vector<std::string>& paths, int selectedIndex) {
 		framePaths = paths;
+		randomCycleCounter = 0;
 		if(framePaths.empty()) {
 			frameSvgs.clear();
 			currentFrameIndex = 0;
@@ -317,6 +320,7 @@ struct SticksyFlipbookModule : Module {
 		json_object_set_new(rootJ, "currentFrameIndex", json_integer(currentFrameIndex));
 		json_object_set_new(rootJ, "playMode", json_string(playModeKey().c_str()));
 		json_object_set_new(rootJ, "pingDirection", json_integer(pingDirection));
+		json_object_set_new(rootJ, "randomCycleCounter", json_integer(randomCycleCounter));
 		return rootJ;
 	}
 
@@ -343,19 +347,32 @@ struct SticksyFlipbookModule : Module {
 		if(pingDirectionJ && json_is_integer(pingDirectionJ)) pingDirection = json_integer_value(pingDirectionJ);
 		if(pingDirection >= 0) pingDirection = 1;
 		else pingDirection = -1;
+		json_t* randomCycleCounterJ = json_object_get(rootJ, "randomCycleCounter");
+		if(randomCycleCounterJ && json_is_integer(randomCycleCounterJ)) randomCycleCounter = json_integer_value(randomCycleCounterJ);
+		if(randomCycleCounter < 0) randomCycleCounter = 0;
+		int n = (int)framePaths.size();
+		if(n > 1 && randomCycleCounter >= n) randomCycleCounter %= n;
+		if(n <= 1) randomCycleCounter = 0;
 	}
 
 	void process(const ProcessArgs& args) override {
+		bool fireEoc = false;
 		if(clkTrigger.process(inputs[CLK_INPUT].getVoltage())) {
 			int n = (int)framePaths.size();
-			if(n > 1) {
+			if(n <= 1) {
+				fireEoc = true;
+			}
+			else {
+				int previousIndex = currentFrameIndex;
 				if(playMode == PLAY_FORWARD) {
 					currentFrameIndex++;
 					if(currentFrameIndex >= n) currentFrameIndex = 0;
+					if(previousIndex == n - 1 && currentFrameIndex == 0) fireEoc = true;
 				}
 				else if(playMode == PLAY_REVERSE) {
 					currentFrameIndex--;
 					if(currentFrameIndex < 0) currentFrameIndex = n - 1;
+					if(previousIndex == 0 && currentFrameIndex == n - 1) fireEoc = true;
 				}
 				else if(playMode == PLAY_PING_PONG) {
 					currentFrameIndex += pingDirection;
@@ -367,15 +384,22 @@ struct SticksyFlipbookModule : Module {
 						currentFrameIndex = 1;
 						pingDirection = 1;
 					}
+					if(previousIndex == 1 && currentFrameIndex == 0) fireEoc = true;
 				}
 				else if(playMode == PLAY_RANDOM) {
 					currentFrameIndex = (int)std::floor(random::uniform() * n);
 					if(currentFrameIndex >= n) currentFrameIndex = n - 1;
+					randomCycleCounter++;
+					if(randomCycleCounter >= n) {
+						randomCycleCounter = 0;
+						fireEoc = true;
+					}
 				}
 				frameVersion++;
 			}
 		}
-		outputs[EOC_OUTPUT].setVoltage(0.f);
+		if(fireEoc) eocPulse.trigger(1e-3f);
+		outputs[EOC_OUTPUT].setVoltage(eocPulse.process(args.sampleTime) ? 10.f : 0.f);
 	}
 };
 
