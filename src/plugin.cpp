@@ -229,9 +229,18 @@ struct SticksyFlipbookModule : Module {
 		NUM_OUTPUTS
 	};
 	static const int MAX_FRAMES = 128;
+	enum PlayMode {
+		PLAY_FORWARD,
+		PLAY_REVERSE,
+		PLAY_PING_PONG,
+		PLAY_RANDOM,
+		NUM_PLAY_MODES
+	};
 	std::vector<std::string> framePaths;
 	std::vector<std::shared_ptr<window::Svg> > frameSvgs;
 	int currentFrameIndex = 0;
+	PlayMode playMode = PLAY_FORWARD;
+	int pingDirection = 1;
 	dsp::SchmittTrigger clkTrigger;
 	int frameVersion = 0;
 
@@ -278,6 +287,26 @@ struct SticksyFlipbookModule : Module {
 		frameVersion++;
 	}
 
+	void setPlayMode(PlayMode mode) {
+		if(mode < 0 || mode >= NUM_PLAY_MODES) mode = PLAY_FORWARD;
+		playMode = mode;
+		if(playMode == PLAY_PING_PONG) {
+			int last = (int)framePaths.size() - 1;
+			pingDirection = (currentFrameIndex == last && last > 0) ? -1 : 1;
+		}
+	}
+
+	static const std::vector<std::string>& playModeKeys() {
+		static const std::vector<std::string> k = {"forward", "reverse", "pingPong", "random"};
+		return k;
+	}
+	static PlayMode playModeFromKey(const std::string& key) {
+		const std::vector<std::string>& keys = playModeKeys();
+		for(int i = 0; i < (int)keys.size(); i++) if(keys[i] == key) return (PlayMode)i;
+		return PLAY_FORWARD;
+	}
+	std::string playModeKey() const { return playModeKeys()[playMode]; }
+
 	json_t* dataToJson() override {
 		json_t* rootJ = json_object();
 		json_t* framePathsJ = json_array();
@@ -286,6 +315,8 @@ struct SticksyFlipbookModule : Module {
 		}
 		json_object_set_new(rootJ, "framePaths", framePathsJ);
 		json_object_set_new(rootJ, "currentFrameIndex", json_integer(currentFrameIndex));
+		json_object_set_new(rootJ, "playMode", json_string(playModeKey().c_str()));
+		json_object_set_new(rootJ, "pingDirection", json_integer(pingDirection));
 		return rootJ;
 	}
 
@@ -305,13 +336,42 @@ struct SticksyFlipbookModule : Module {
 		json_t* currentFrameIndexJ = json_object_get(rootJ, "currentFrameIndex");
 		if(currentFrameIndexJ && json_is_integer(currentFrameIndexJ)) loadedFrameIndex = json_integer_value(currentFrameIndexJ);
 		setFrames(loadedPaths, loadedFrameIndex);
+		json_t* playModeJ = json_object_get(rootJ, "playMode");
+		if(playModeJ && json_is_string(playModeJ)) playMode = playModeFromKey(json_string_value(playModeJ));
+		else playMode = PLAY_FORWARD;
+		json_t* pingDirectionJ = json_object_get(rootJ, "pingDirection");
+		if(pingDirectionJ && json_is_integer(pingDirectionJ)) pingDirection = json_integer_value(pingDirectionJ);
+		if(pingDirection >= 0) pingDirection = 1;
+		else pingDirection = -1;
 	}
 
 	void process(const ProcessArgs& args) override {
 		if(clkTrigger.process(inputs[CLK_INPUT].getVoltage())) {
-			if(!framePaths.empty()) {
-				currentFrameIndex++;
-				if(currentFrameIndex >= (int)framePaths.size()) currentFrameIndex = 0;
+			int n = (int)framePaths.size();
+			if(n > 1) {
+				if(playMode == PLAY_FORWARD) {
+					currentFrameIndex++;
+					if(currentFrameIndex >= n) currentFrameIndex = 0;
+				}
+				else if(playMode == PLAY_REVERSE) {
+					currentFrameIndex--;
+					if(currentFrameIndex < 0) currentFrameIndex = n - 1;
+				}
+				else if(playMode == PLAY_PING_PONG) {
+					currentFrameIndex += pingDirection;
+					if(currentFrameIndex >= n) {
+						currentFrameIndex = n - 2;
+						pingDirection = -1;
+					}
+					else if(currentFrameIndex < 0) {
+						currentFrameIndex = 1;
+						pingDirection = 1;
+					}
+				}
+				else if(playMode == PLAY_RANDOM) {
+					currentFrameIndex = (int)std::floor(random::uniform() * n);
+					if(currentFrameIndex >= n) currentFrameIndex = n - 1;
+				}
 				frameVersion++;
 			}
 		}
@@ -372,6 +432,41 @@ struct SticksyFlipbookWidget : ModuleWidget {
 	void appendContextMenu(Menu* menu) override {
 		auto* module = dynamic_cast<SticksyFlipbookModule*>(this->module);
 		assert(menu);
+		menu->addChild(new MenuSeparator());
+		auto* pmLabel = new MenuLabel();
+		pmLabel->text = "Play Mode";
+		menu->addChild(pmLabel);
+		struct PlayModeItem : MenuItem {
+			SticksyFlipbookModule* module;
+			SticksyFlipbookModule::PlayMode mode;
+			void onAction(const event::Action&) override {
+				if(!module || module->playMode == mode) return;
+				SticksyFlipbookModule* m = module;
+				SticksyFlipbookModule::PlayMode nextMode = mode;
+				pushFlipbookModuleChange(module, "change Sticksy Flipbook play mode", [m, nextMode]() { m->setPlayMode(nextMode); });
+			}
+			void step() override {
+				MenuItem::step();
+				rightText = (module && module->playMode == mode) ? "✔" : "";
+			}
+		};
+		auto* pf = createMenuItem<PlayModeItem>("Forward");
+		pf->module = module;
+		pf->mode = SticksyFlipbookModule::PLAY_FORWARD;
+		menu->addChild(pf);
+		auto* pr = createMenuItem<PlayModeItem>("Reverse");
+		pr->module = module;
+		pr->mode = SticksyFlipbookModule::PLAY_REVERSE;
+		menu->addChild(pr);
+		auto* pp = createMenuItem<PlayModeItem>("Ping Pong");
+		pp->module = module;
+		pp->mode = SticksyFlipbookModule::PLAY_PING_PONG;
+		menu->addChild(pp);
+		auto* px = createMenuItem<PlayModeItem>("Random");
+		px->module = module;
+		px->mode = SticksyFlipbookModule::PLAY_RANDOM;
+		menu->addChild(px);
+
 		menu->addChild(new MenuSeparator());
 		struct LoadFlipbookImageItem : MenuItem {
 			SticksyFlipbookModule* module;
