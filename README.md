@@ -2,9 +2,7 @@
 
 Sticksy is a decorative SVG sticker plugin for VCV Rack.
 
-It provides blank panel modules that let you place visual stickers on your patch for decoration, signatures, labels, or visual organization. It does not process audio, CV, or DSP.
 
-## Modules
 
 - Sticksy Blank 3HP
 - Sticksy Blank 5HP
