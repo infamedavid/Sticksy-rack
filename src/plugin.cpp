@@ -83,19 +83,39 @@ struct SticksyBlankModule : Module {
 		std::string filename=system::getFilename(sourcePath);
 		if(filename.empty()) return sourcePath;
 		std::string ext=system::getExtension(filename);
-		std::string stem=ext.empty()?filename:filename.substr(0,filename.size()-ext.size());
+		std::string extWithDot=ext;
+		if(!extWithDot.empty()&&extWithDot[0]!='.') extWithDot="."+extWithDot;
+		size_t stemLen=filename.size();
+		if(!ext.empty()&&filename.size()>=ext.size()&&filename.compare(filename.size()-ext.size(),ext.size(),ext)==0) stemLen=filename.size()-ext.size();
+		else if(!extWithDot.empty()&&filename.size()>=extWithDot.size()&&filename.compare(filename.size()-extWithDot.size(),extWithDot.size(),extWithDot)==0) stemLen=filename.size()-extWithDot.size();
+		std::string stem=filename.substr(0,stemLen);
 		std::string sticksyDir=asset::user("Sticksy");
 		if(!system::exists(sticksyDir) && !system::createDirectory(sticksyDir)) return sourcePath;
 		std::string libraryDir=system::join(sticksyDir,"stickers");
 		if(!system::exists(libraryDir) && !system::createDirectory(libraryDir)) return sourcePath;
 		std::string candidate=system::join(libraryDir,filename); int suffix=1;
-		while(system::exists(candidate)){ std::ostringstream name; name<<stem<<"_"<<std::setfill('0')<<std::setw(3)<<suffix++<<ext; candidate=system::join(libraryDir,name.str()); }
+		while(system::exists(candidate)){ std::ostringstream name; name<<stem<<"_"<<std::setfill('0')<<std::setw(3)<<suffix++<<extWithDot; candidate=system::join(libraryDir,name.str()); }
 		if(!system::copy(sourcePath,candidate)) return sourcePath;
 		return candidate;
 	}
 	std::string resolveStickerPathForLoad(const std::string& selectedPath){ return storageMode==STORAGE_STICKSY_LIBRARY ? ensureLibraryCopyPath(selectedPath) : selectedPath; }
 
-	std::shared_ptr<window::Svg> loadSvgWithFallback(const std::string& path){ std::shared_ptr<window::Svg> loaded; if(!path.empty()){ try{ loaded=APP->window->loadSvg(path);}catch(...){} } if(!loaded){ try{ loaded=APP->window->loadSvg(asset::plugin(pluginInstance,FALLBACK_STICKER_PATH)); }catch(...){} } return loaded; }
+	static bool isValidSvg(const std::shared_ptr<window::Svg>& svg) {
+		if(!svg) return false;
+		math::Vec size=svg->getSize();
+		return size.x>0.f&&size.y>0.f&&std::isfinite(size.x)&&std::isfinite(size.y);
+	}
+	std::shared_ptr<window::Svg> loadSvgWithFallback(const std::string& path){
+		std::shared_ptr<window::Svg> loaded;
+		if(!path.empty()){
+			try{ loaded=APP->window->loadSvg(path);}catch(...){}
+		}
+		if(isValidSvg(loaded)) return loaded;
+		std::shared_ptr<window::Svg> fallback;
+		try{ fallback=APP->window->loadSvg(asset::plugin(pluginInstance,FALLBACK_STICKER_PATH)); }catch(...){}
+		if(isValidSvg(fallback)) return fallback;
+		return nullptr;
+	}
 	void loadStickerSvg(StickerEntry& entry){ entry.svg=loadSvgWithFallback(entry.path); }
 
 	math::Vec estimateStickerSize(const StickerEntry& entry) {
@@ -150,30 +170,31 @@ struct StickerCanvas : Widget {
 };
 
 struct SticksyBlankWidget : ModuleWidget {
+	int browserHpWidth = 5;
 	int lastPanelVersion=-1,lastStickerVersion=-1; StickerCanvas* stickerCanvas=NULL;
-		void applyPanelForBackground(SticksyBlankModule* module){ const auto& key=SticksyBlankModule::backgroundKeys()[module?module->background:SticksyBlankModule::BACKGROUND_METAL]; const std::string folder=module?module->panelFolder:"5hp"; setPanel(createPanel(asset::plugin(pluginInstance,"res/panels/"+folder+"/"+key+".svg"))); }
+		void applyPanelForBackground(SticksyBlankModule* module){ const auto& key=SticksyBlankModule::backgroundKeys()[module?module->background:SticksyBlankModule::BACKGROUND_METAL]; const std::string folder=module?module->panelFolder:(std::to_string(browserHpWidth)+"hp"); setPanel(createPanel(asset::plugin(pluginInstance,"res/panels/"+folder+"/"+key+".svg"))); }
 
-	SticksyBlankWidget(SticksyBlankModule* module){ setModule(module); box.size=math::Vec(RACK_GRID_WIDTH*(module?module->hpWidth:5), RACK_GRID_HEIGHT); applyPanelForBackground(module); stickerCanvas=new StickerCanvas(); stickerCanvas->box=box.zeroPos(); stickerCanvas->module=module; addChild(stickerCanvas);} 
+	SticksyBlankWidget(SticksyBlankModule* module, int defaultHp=5){ setModule(module); browserHpWidth=defaultHp; box.size=math::Vec(RACK_GRID_WIDTH*(module?module->hpWidth:browserHpWidth), RACK_GRID_HEIGHT); applyPanelForBackground(module); stickerCanvas=new StickerCanvas(); stickerCanvas->box=box.zeroPos(); stickerCanvas->module=module; addChild(stickerCanvas);} 
 	void step() override { ModuleWidget::step(); auto* module=dynamic_cast<SticksyBlankModule*>(this->module); if(!module) return; if(module->panelVersion!=lastPanelVersion){ applyPanelForBackground(module); lastPanelVersion=module->panelVersion;} if(module->stickerVersion!=lastStickerVersion){ lastStickerVersion=module->stickerVersion; } }
 
 	void appendContextMenu(Menu* menu) override {
 		auto* module=dynamic_cast<SticksyBlankModule*>(this->module); assert(menu);
 		menu->addChild(new MenuSeparator()); auto* modeLabel=new MenuLabel(); modeLabel->text="Mode"; menu->addChild(modeLabel);
-		struct ModeItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::Mode mode; void onAction(const event::Action&) override { if(!module||!module->stickers.empty()||module->mode==mode) return; pushSticksyModuleChange(module,"change Sticksy mode",[&](){ module->setMode(mode);}); } void step() override { MenuItem::step(); disabled=module&&!module->stickers.empty()&&module->mode!=mode; rightText=(module&&module->mode==mode)?"✔":""; }};
+		struct ModeItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::Mode mode; void onAction(const event::Action&) override { if(!module||!module->stickers.empty()||module->mode==mode) return; pushSticksyModuleChange(module,"change Sticksy mode",[module=module,mode=mode](){ module->setMode(mode);}); } void step() override { MenuItem::step(); disabled=module&&!module->stickers.empty()&&module->mode!=mode; rightText=(module&&module->mode==mode)?"✔":""; }};
 		auto* s=createMenuItem<ModeItem>("Single"); s->module=module; s->mode=SticksyBlankModule::MODE_SINGLE; menu->addChild(s); auto* m=createMenuItem<ModeItem>("Multiple"); m->module=module; m->mode=SticksyBlankModule::MODE_MULTIPLE; menu->addChild(m);
 		if(module&&!module->stickers.empty()){ auto* hint=createMenuItem<MenuItem>("Delete loaded SVGs first"); hint->disabled=true; menu->addChild(hint);} 
-		struct LoadSvgItem:MenuItem{ SticksyBlankModule* module; void onAction(const event::Action&) override { if(!module) return; osdialog_filters* filters=osdialog_filters_parse("Scalable Vector Graphic (.svg):svg"); char* pathC=osdialog_file(OSDIALOG_OPEN,NULL,NULL,filters); osdialog_filters_free(filters); if(!pathC) return; std::string selectedPath=pathC; std::free(pathC); if(selectedPath.empty()||string::lowercase(system::getExtension(selectedPath))!=".svg") return; StickerEntry e; std::string storedPath=module->resolveStickerPathForLoad(selectedPath); e.path=storedPath; e.displayName=system::getFilename(storedPath); module->loadStickerSvg(e); if(module->mode==SticksyBlankModule::MODE_MULTIPLE) module->assignPlacementForMultiple(e); pushSticksyModuleChange(module,"load Sticksy SVG",[&](){ if(module->mode==SticksyBlankModule::MODE_SINGLE) module->replaceSingleSticker(e); else module->addMultipleSticker(e);}); }};
+		struct LoadSvgItem:MenuItem{ SticksyBlankModule* module; void onAction(const event::Action&) override { if(!module) return; osdialog_filters* filters=osdialog_filters_parse("Scalable Vector Graphic (.svg):svg"); char* pathC=osdialog_file(OSDIALOG_OPEN,NULL,NULL,filters); osdialog_filters_free(filters); if(!pathC) return; std::string selectedPath=pathC; std::free(pathC); if(selectedPath.empty()||string::lowercase(system::getExtension(selectedPath))!=".svg") return; StickerEntry e; std::string storedPath=module->resolveStickerPathForLoad(selectedPath); e.path=storedPath; e.displayName=system::getFilename(storedPath); module->loadStickerSvg(e); if(module->mode==SticksyBlankModule::MODE_MULTIPLE) module->assignPlacementForMultiple(e); pushSticksyModuleChange(module,"load Sticksy SVG",[module=module,e](){ if(module->mode==SticksyBlankModule::MODE_SINGLE) module->replaceSingleSticker(e); else module->addMultipleSticker(e);}); }};
 		auto* load=createMenuItem<LoadSvgItem>("Load SVG..."); load->module=module; menu->addChild(load);
-		if(module&&module->mode==SticksyBlankModule::MODE_MULTIPLE){ struct ShakeItem:MenuItem{ SticksyBlankModule* module; void onAction(const event::Action&) override { if(!module||module->mode!=SticksyBlankModule::MODE_MULTIPLE||module->stickers.empty()) return; pushSticksyModuleChange(module,"shake Sticksy stickers",[&](){ module->shakeMultipleStickers();}); } void step() override { MenuItem::step(); disabled=!module||module->mode!=SticksyBlankModule::MODE_MULTIPLE||module->stickers.empty(); }}; auto* shake=createMenuItem<ShakeItem>("Shake"); shake->module=module; menu->addChild(shake);} 
+		if(module&&module->mode==SticksyBlankModule::MODE_MULTIPLE){ struct ShakeItem:MenuItem{ SticksyBlankModule* module; void onAction(const event::Action&) override { if(!module||module->mode!=SticksyBlankModule::MODE_MULTIPLE||module->stickers.empty()) return; pushSticksyModuleChange(module,"shake Sticksy stickers",[module=module](){ module->shakeMultipleStickers();}); } void step() override { MenuItem::step(); disabled=!module||module->mode!=SticksyBlankModule::MODE_MULTIPLE||module->stickers.empty(); }}; auto* shake=createMenuItem<ShakeItem>("Shake"); shake->module=module; menu->addChild(shake);} 
 		menu->addChild(new MenuSeparator()); auto* stLabel=new MenuLabel(); stLabel->text="Storage"; menu->addChild(stLabel);
-		struct StorageItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::StorageMode storageMode; void onAction(const event::Action&) override { if(!module||module->storageMode==storageMode) return; pushSticksyModuleChange(module,"change Sticksy storage mode",[&](){ module->setStorageMode(storageMode);}); } void step() override { MenuItem::step(); rightText=(module&&module->storageMode==storageMode)?"✔":""; }};
+		struct StorageItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::StorageMode storageMode; void onAction(const event::Action&) override { if(!module||module->storageMode==storageMode) return; pushSticksyModuleChange(module,"change Sticksy storage mode",[module=module,storageMode=storageMode](){ module->setStorageMode(storageMode);}); } void step() override { MenuItem::step(); rightText=(module&&module->storageMode==storageMode)?"✔":""; }};
 		auto* ref=createMenuItem<StorageItem>("Referenced"); ref->module=module; ref->storageMode=SticksyBlankModule::STORAGE_REFERENCED; menu->addChild(ref); auto* lib=createMenuItem<StorageItem>("Save in Sticksy Library"); lib->module=module; lib->storageMode=SticksyBlankModule::STORAGE_STICKSY_LIBRARY; menu->addChild(lib);
 		menu->addChild(new MenuSeparator()); auto* loadedLabel=new MenuLabel(); loadedLabel->text="Loaded SVGs"; menu->addChild(loadedLabel);
 		if(module&&module->stickers.empty()){ auto* none=createMenuItem<MenuItem>("(none)"); none->disabled=true; menu->addChild(none);} 
-		struct StickerItem:MenuItem{ SticksyBlankModule* module; int index=-1; Menu* createChildMenu() override { Menu* submenu=new Menu; struct DeleteItem:MenuItem{ SticksyBlankModule* module; int index=-1; void onAction(const event::Action&) override { if(!module||index<0||index>=(int)module->stickers.size()) return; pushSticksyModuleChange(module,"delete Sticksy sticker",[&](){ module->stickers.erase(module->stickers.begin()+index); module->stickerVersion++;}); }}; auto* del=createMenuItem<DeleteItem>("Delete"); del->module=module; del->index=index; del->disabled=!module||index<0||index>=(int)module->stickers.size(); submenu->addChild(del); return submenu; }};
+		struct StickerItem:MenuItem{ SticksyBlankModule* module; int index=-1; Menu* createChildMenu() override { Menu* submenu=new Menu; struct DeleteItem:MenuItem{ SticksyBlankModule* module; int index=-1; void onAction(const event::Action&) override { if(!module||index<0||index>=(int)module->stickers.size()) return; const int deleteIndex=index; pushSticksyModuleChange(module,"delete Sticksy sticker",[module=module,deleteIndex](){ if(deleteIndex<0||deleteIndex>=(int)module->stickers.size()) return; module->stickers.erase(module->stickers.begin()+deleteIndex); module->stickerVersion++;}); }}; auto* del=createMenuItem<DeleteItem>("Delete"); del->module=module; del->index=index; del->disabled=!module||index<0||index>=(int)module->stickers.size(); submenu->addChild(del); return submenu; }};
 		if(module){ for(int i=0;i<(int)module->stickers.size();i++){ auto* item=createMenuItem<StickerItem>(module->stickers[i].displayName,RIGHT_ARROW); item->module=module; item->index=i; menu->addChild(item);} }
 		menu->addChild(new MenuSeparator()); auto* bgLabel=new MenuLabel(); bgLabel->text="Background"; menu->addChild(bgLabel);
-		struct BgItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::Background background; void onAction(const event::Action&) override { if(!module||module->background==background) return; pushSticksyModuleChange(module,"change Sticksy background",[&](){ module->setBackground(background);}); } void step() override { MenuItem::step(); rightText=(module&&module->background==background)?"✔":""; }};
+		struct BgItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::Background background; void onAction(const event::Action&) override { if(!module||module->background==background) return; pushSticksyModuleChange(module,"change Sticksy background",[module=module,background=background](){ module->setBackground(background);}); } void step() override { MenuItem::step(); rightText=(module&&module->background==background)?"✔":""; }};
 		const std::vector<std::string> labels={"Neutral","Wood","Metal","Fabric","Paper","Black","White"}; for(int i=0;i<SticksyBlankModule::NUM_BACKGROUNDS;i++){ auto* item=createMenuItem<BgItem>(labels[i]); item->module=module; item->background=(SticksyBlankModule::Background)i; menu->addChild(item);} 
 	}
 };
@@ -183,10 +204,15 @@ struct SticksyBlank5 : SticksyBlankModule { SticksyBlank5() : SticksyBlankModule
 struct SticksyBlank9 : SticksyBlankModule { SticksyBlank9() : SticksyBlankModule(9, "9hp") {} };
 struct SticksyBlank12 : SticksyBlankModule { SticksyBlank12() : SticksyBlankModule(12, "12hp") {} };
 
-Model* modelSticksyBlank3 = createModel<SticksyBlank3, SticksyBlankWidget>("SticksyBlank3");
-Model* modelSticksyBlank5 = createModel<SticksyBlank5, SticksyBlankWidget>("SticksyBlank5");
-Model* modelSticksyBlank9 = createModel<SticksyBlank9, SticksyBlankWidget>("SticksyBlank9");
-Model* modelSticksyBlank12 = createModel<SticksyBlank12, SticksyBlankWidget>("SticksyBlank12");
+struct SticksyBlank3Widget : SticksyBlankWidget { SticksyBlank3Widget(SticksyBlank3* module) : SticksyBlankWidget(module, 3) {} };
+struct SticksyBlank5Widget : SticksyBlankWidget { SticksyBlank5Widget(SticksyBlank5* module) : SticksyBlankWidget(module, 5) {} };
+struct SticksyBlank9Widget : SticksyBlankWidget { SticksyBlank9Widget(SticksyBlank9* module) : SticksyBlankWidget(module, 9) {} };
+struct SticksyBlank12Widget : SticksyBlankWidget { SticksyBlank12Widget(SticksyBlank12* module) : SticksyBlankWidget(module, 12) {} };
+
+Model* modelSticksyBlank3 = createModel<SticksyBlank3, SticksyBlank3Widget>("SticksyBlank3");
+Model* modelSticksyBlank5 = createModel<SticksyBlank5, SticksyBlank5Widget>("SticksyBlank5");
+Model* modelSticksyBlank9 = createModel<SticksyBlank9, SticksyBlank9Widget>("SticksyBlank9");
+Model* modelSticksyBlank12 = createModel<SticksyBlank12, SticksyBlank12Widget>("SticksyBlank12");
 
 void init(Plugin* p) {
 	pluginInstance = p;
