@@ -1,3 +1,182 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="25.40mm" height="128.5mm" viewBox="0 0 25.40 128.5">
-  <rect x="0" y="0" width="25.40" height="128.5" fill="#ffffff"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="25.40mm"
+   height="128.5mm"
+   viewBox="0 0 25.40 128.5"
+   version="1.1"
+   id="svg1"
+   sodipodi:docname="paper.svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs1" />
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#cccccc"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="1"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="1.174946"
+     inkscape:cx="49.363972"
+     inkscape:cy="317.88696"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg1" />
+  <rect
+     x="0.14007096"
+     y="2.0876464e-06"
+     width="25.119858"
+     height="128.5"
+     fill="#ffffff"
+     id="rect1"
+     style="fill:#f2f2f2;stroke:#999999;stroke-width:0.128386;stroke-dasharray:none" />
+  <path
+     id="path5538"
+     style="color:#000000"
+     d="M 0.14007081,14.539622 H 25.259929"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff" />
+  <path
+     id="path5540"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,20.662766 H 25.259929" />
+  <path
+     id="path5542"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,26.91945 H 25.259929" />
+  <path
+     id="path5544"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,33.176139 H 25.259929" />
+  <path
+     id="path5546"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,39.432819 H 25.259929" />
+  <path
+     id="path5548"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,45.689498 H 25.259929" />
+  <path
+     id="path5550"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,51.946178 H 25.259929" />
+  <path
+     id="path5552"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,58.202874 H 25.259929" />
+  <path
+     id="path5554"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,64.459553 H 25.259929" />
+  <path
+     id="path5556"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,70.71623 H 25.259929" />
+  <path
+     id="path5592"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,76.97423 H 25.259929" />
+  <path
+     id="path5594"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,83.230899 H 25.259929" />
+  <path
+     id="path5596"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,89.487599 H 25.259929" />
+  <path
+     id="path5598"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,95.744279 H 25.259929" />
+  <path
+     id="path5600"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,102.00096 H 25.259929" />
+  <path
+     id="path5602"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,108.25764 H 25.259929" />
+  <path
+     id="path5604"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,114.51433 H 25.259929" />
+  <path
+     id="path5606"
+     stroke="#0011ff"
+     stroke-width="0.110465px"
+     fill="#0000ff"
+     d="M 0.14007081,120.77101 H 25.259929" />
+  <path
+     id="path6137"
+     style="color:#000000"
+     d="m 4.2039688,67.97302 a 1.6999378,1.7019845 0 1 1 3.399794,0 1.6999378,1.7019845 0 1 1 -3.399794,0 z"
+     fill-opacity="0.32549"
+     stroke="#030000"
+     stroke-width="0.0555081"
+     fill="#acacac" />
+  <path
+     id="path6139"
+     style="color:#000000"
+     d="M 12.7,1.5e-6 V 128.5"
+     stroke="#ff0000"
+     stroke-width="0.22266px"
+     fill="#0000ff" />
+  <path
+     id="path12593"
+     style="color:#000000"
+     d="m 4.2039688,23.207427 a 1.6999378,1.7019845 0 1 1 3.399794,0 1.6999378,1.7019845 0 1 1 -3.399794,0 z"
+     fill-opacity="0.32549"
+     stroke="#030000"
+     stroke-width="0.0555081"
+     fill="#acacac" />
+  <path
+     id="path12595"
+     style="color:#000000"
+     d="m 4.2039688,117.88116 a 1.6999378,1.7019845 0 1 1 3.399794,0 1.6999378,1.7019845 0 1 1 -3.399794,0 z"
+     stroke="#030000"
+     stroke-width="0.0555081"
+     fill="#e4e4e4" />
 </svg>
