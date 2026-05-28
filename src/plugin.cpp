@@ -144,12 +144,12 @@ struct SticksyBlankModule : Module {
 
 	void assignPlacementForMultiple(StickerEntry& entry){
 		const float panelW=RACK_GRID_WIDTH*(float)hpWidth, panelH=RACK_GRID_HEIGHT; entry.rotation=random::uniform()*36.f-18.f;
-		math::Vec size=estimateStickerSize(entry); float absCos=std::fabs(std::cos(entry.rotation*DEG_TO_RAD)), absSin=std::fabs(std::sin(entry.rotation*DEG_TO_RAD));
-		float rotW=size.x*absCos+size.y*absSin, rotH=size.x*absSin+size.y*absCos, area=std::max(rotW*rotH,1.f);
-		auto visibleRatioAt=[&](float cx,float cy){ float left=cx-rotW*.5f,right=cx+rotW*.5f,top=cy-rotH*.5f,bottom=cy+rotH*.5f; float ix0=std::max(left,0.f),iy0=std::max(top,0.f),ix1=std::min(right,panelW),iy1=std::min(bottom,panelH); float iw=std::max(0.f,ix1-ix0),ih=std::max(0.f,iy1-iy0); return (iw*ih)/area; };
-		float bestCx=panelW*.5f,bestCy=panelH*.5f,bestRatio=visibleRatioAt(bestCx,bestCy);
-		for(int i=0;i<20;i++){ float cx=random::uniform()*(panelW+rotW)-rotW*.5f, cy=random::uniform()*(panelH+rotH)-rotH*.5f; float ratio=visibleRatioAt(cx,cy); if(ratio>bestRatio){bestRatio=ratio;bestCx=cx;bestCy=cy;} if(ratio>=.5f) break; }
-		entry.x=bestCx-panelW*.5f; entry.y=bestCy-panelH*.5f;
+		float margin=RACK_GRID_WIDTH;
+		float minX=margin, maxX=panelW-margin;
+		float minY=margin, maxY=panelH-margin;
+		float cx=(maxX<=minX)?(panelW*.5f):(minX+random::uniform()*(maxX-minX));
+		float cy=(maxY<=minY)?(panelH*.5f):(minY+random::uniform()*(maxY-minY));
+		entry.x=cx-panelW*.5f; entry.y=cy-panelH*.5f;
 	}
 	void shakeMultipleStickers(){ if(mode!=MODE_MULTIPLE||stickers.empty()) return; for(StickerEntry& e:stickers) assignPlacementForMultiple(e); stickerVersion++; }
 
