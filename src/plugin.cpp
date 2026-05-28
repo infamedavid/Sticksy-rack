@@ -218,10 +218,44 @@ struct SticksyBlank5Widget : SticksyBlankWidget { SticksyBlank5Widget(SticksyBla
 struct SticksyBlank9Widget : SticksyBlankWidget { SticksyBlank9Widget(SticksyBlank9* module) : SticksyBlankWidget(module, 9) {} };
 struct SticksyBlank12Widget : SticksyBlankWidget { SticksyBlank12Widget(SticksyBlank12* module) : SticksyBlankWidget(module, 12) {} };
 
+
+struct SticksyFlipbookModule : Module {
+	enum InputIds {
+		CLK_INPUT,
+		NUM_INPUTS
+	};
+	enum OutputIds {
+		EOC_OUTPUT,
+		NUM_OUTPUTS
+	};
+
+	SticksyFlipbookModule() {
+		config(0, NUM_INPUTS, NUM_OUTPUTS, 0);
+		configInput(CLK_INPUT, "CLK");
+		configOutput(EOC_OUTPUT, "EOC");
+	}
+
+	void process(const ProcessArgs& args) override {
+		outputs[EOC_OUTPUT].setVoltage(0.f);
+	}
+};
+
+struct SticksyFlipbookWidget : ModuleWidget {
+	SticksyFlipbookWidget(SticksyFlipbookModule* module) {
+		setModule(module);
+		box.size = math::Vec(RACK_GRID_WIDTH * 12.f, RACK_GRID_HEIGHT);
+		setPanel(createPanel(asset::plugin(pluginInstance, "res/panels/flipbook/flipbook_12hp.svg")));
+
+		addInput(createInputCentered<PJ301MPort>(mm2px(math::Vec(15.24f, 116.0f)), module, SticksyFlipbookModule::CLK_INPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(math::Vec(45.72f, 116.0f)), module, SticksyFlipbookModule::EOC_OUTPUT));
+	}
+};
+
 Model* modelSticksyBlank3 = createModel<SticksyBlank3, SticksyBlank3Widget>("SticksyBlank3");
 Model* modelSticksyBlank5 = createModel<SticksyBlank5, SticksyBlank5Widget>("SticksyBlank5");
 Model* modelSticksyBlank9 = createModel<SticksyBlank9, SticksyBlank9Widget>("SticksyBlank9");
 Model* modelSticksyBlank12 = createModel<SticksyBlank12, SticksyBlank12Widget>("SticksyBlank12");
+Model* modelSticksyFlipbook = createModel<SticksyFlipbookModule, SticksyFlipbookWidget>("SticksyFlipbook");
 
 void init(Plugin* p) {
 	pluginInstance = p;
@@ -229,4 +263,5 @@ void init(Plugin* p) {
 	p->addModel(modelSticksyBlank5);
 	p->addModel(modelSticksyBlank9);
 	p->addModel(modelSticksyBlank12);
+	p->addModel(modelSticksyFlipbook);
 }
