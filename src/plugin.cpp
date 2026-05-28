@@ -238,6 +238,8 @@ struct SticksyFlipbookModule : Module {
 	};
 	std::vector<std::string> framePaths;
 	std::vector<std::shared_ptr<window::Svg> > frameSvgs;
+	std::string backgroundPath;
+	std::shared_ptr<window::Svg> backgroundSvg;
 	int currentFrameIndex = 0;
 	PlayMode playMode = PLAY_FORWARD;
 	int pingDirection = 1;
@@ -299,6 +301,20 @@ struct SticksyFlipbookModule : Module {
 		}
 	}
 
+	std::shared_ptr<window::Svg> loadSvgWithoutFallback(const std::string& path) {
+		if(path.empty()) return nullptr;
+		std::shared_ptr<window::Svg> loaded;
+		try { loaded = APP->window->loadSvg(path); } catch(...) {}
+		if(isValidSvg(loaded)) return loaded;
+		return nullptr;
+	}
+
+	void setBackgroundPath(const std::string& path) {
+		backgroundPath = path;
+		backgroundSvg = loadSvgWithoutFallback(backgroundPath);
+		frameVersion++;
+	}
+
 	static const std::vector<std::string>& playModeKeys() {
 		static const std::vector<std::string> k = {"forward", "reverse", "pingPong", "random"};
 		return k;
@@ -321,6 +337,7 @@ struct SticksyFlipbookModule : Module {
 		json_object_set_new(rootJ, "playMode", json_string(playModeKey().c_str()));
 		json_object_set_new(rootJ, "pingDirection", json_integer(pingDirection));
 		json_object_set_new(rootJ, "randomCycleCounter", json_integer(randomCycleCounter));
+		json_object_set_new(rootJ, "backgroundPath", json_string(backgroundPath.c_str()));
 		return rootJ;
 	}
 
@@ -353,6 +370,9 @@ struct SticksyFlipbookModule : Module {
 		int n = (int)framePaths.size();
 		if(n > 1 && randomCycleCounter >= n) randomCycleCounter %= n;
 		if(n <= 1) randomCycleCounter = 0;
+		json_t* backgroundPathJ = json_object_get(rootJ, "backgroundPath");
+		if(backgroundPathJ && json_is_string(backgroundPathJ)) backgroundPath = json_string_value(backgroundPathJ);
+		backgroundSvg = loadSvgWithoutFallback(backgroundPath);
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -419,6 +439,15 @@ struct FlipbookCanvas : Widget {
 	void draw(const DrawArgs& args) override {
 		nvgSave(args.vg);
 		nvgScissor(args.vg, 0.f, 0.f, box.size.x, box.size.y);
+		if(module && module->backgroundSvg) {
+			math::Vec size = module->backgroundSvg->getSize();
+			float x = std::round((box.size.x - size.x) * 0.5f);
+			float y = std::round((box.size.y - size.y) * 0.5f);
+			nvgSave(args.vg);
+			nvgTranslate(args.vg, x, y);
+			module->backgroundSvg->draw(args.vg);
+			nvgRestore(args.vg);
+		}
 		if(module && !module->frameSvgs.empty()) {
 			int frameIndex = module->currentFrameIndex;
 			if(frameIndex < 0 || frameIndex >= (int)module->frameSvgs.size()) frameIndex = 0;
@@ -584,6 +613,40 @@ struct SticksyFlipbookWidget : ModuleWidget {
 		auto* load = createMenuItem<LoadFlipbookImageItem>("Load Flipbook Image...");
 		load->module = module;
 		menu->addChild(load);
+		struct LoadBackgroundImageItem : MenuItem {
+			SticksyFlipbookModule* module;
+			void onAction(const event::Action&) override {
+				if(!module) return;
+				osdialog_filters* filters = osdialog_filters_parse("Scalable Vector Graphic (.svg):svg");
+				char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);
+				osdialog_filters_free(filters);
+				if(!pathC) return;
+				std::string selectedPath = pathC;
+				std::free(pathC);
+				if(selectedPath.empty() || !hasSvgExtension(selectedPath)) return;
+				SticksyFlipbookModule* m = module;
+				std::string newPath = selectedPath;
+				pushFlipbookModuleChange(module, "load Sticksy Flipbook background", [m, newPath]() { m->setBackgroundPath(newPath); });
+			}
+		};
+		auto* loadBackground = createMenuItem<LoadBackgroundImageItem>("Load Background Image...");
+		loadBackground->module = module;
+		menu->addChild(loadBackground);
+		struct ClearBackgroundItem : MenuItem {
+			SticksyFlipbookModule* module;
+			void onAction(const event::Action&) override {
+				if(!module || module->backgroundPath.empty()) return;
+				SticksyFlipbookModule* m = module;
+				pushFlipbookModuleChange(module, "clear Sticksy Flipbook background", [m]() { m->setBackgroundPath(""); });
+			}
+			void step() override {
+				MenuItem::step();
+				disabled = !module || module->backgroundPath.empty();
+			}
+		};
+		auto* clearBackground = createMenuItem<ClearBackgroundItem>("Clear Background");
+		clearBackground->module = module;
+		menu->addChild(clearBackground);
 	}
 };
 
