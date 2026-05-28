@@ -34,6 +34,12 @@
       "name": "Sticksy Blank 12HP",
       "description": "Decorative blank panel.",
       "tags": ["Blank"]
+    },
+    {
+      "slug": "SticksyFlipbook",
+      "name": "Sticksy Flipbook",
+      "description": "Decorative flipbook panel with CLK and EOC jacks.",
+      "tags": ["Blank"]
     }
   ]
 }

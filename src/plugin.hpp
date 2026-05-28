@@ -9,3 +9,4 @@ extern Model* modelSticksyBlank3;
 extern Model* modelSticksyBlank5;
 extern Model* modelSticksyBlank9;
 extern Model* modelSticksyBlank12;
+extern Model* modelSticksyFlipbook;
