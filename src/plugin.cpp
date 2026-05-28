@@ -238,6 +238,7 @@ struct SticksyFlipbookModule : Module {
 	};
 	std::vector<std::string> framePaths;
 	std::vector<std::shared_ptr<window::Svg> > frameSvgs;
+	std::string selectedFramePath;
 	std::string backgroundPath;
 	std::shared_ptr<window::Svg> backgroundSvg;
 	int currentFrameIndex = 0;
@@ -272,8 +273,9 @@ struct SticksyFlipbookModule : Module {
 		return nullptr;
 	}
 
-	void setFrames(const std::vector<std::string>& paths, int selectedIndex) {
+	void setFrames(const std::vector<std::string>& paths, int selectedIndex, const std::string& selectedPath = "") {
 		framePaths = paths;
+		selectedFramePath = selectedPath;
 		randomCycleCounter = 0;
 		if(framePaths.empty()) {
 			frameSvgs.clear();
@@ -289,6 +291,7 @@ struct SticksyFlipbookModule : Module {
 		if(selectedIndex < 0) selectedIndex = 0;
 		if(selectedIndex >= (int)framePaths.size()) selectedIndex = (int)framePaths.size() - 1;
 		currentFrameIndex = selectedIndex;
+		if(selectedFramePath.empty() && currentFrameIndex >= 0 && currentFrameIndex < (int)framePaths.size()) selectedFramePath = framePaths[currentFrameIndex];
 		frameVersion++;
 	}
 
@@ -337,6 +340,7 @@ struct SticksyFlipbookModule : Module {
 		json_object_set_new(rootJ, "playMode", json_string(playModeKey().c_str()));
 		json_object_set_new(rootJ, "pingDirection", json_integer(pingDirection));
 		json_object_set_new(rootJ, "randomCycleCounter", json_integer(randomCycleCounter));
+		json_object_set_new(rootJ, "selectedFramePath", json_string(selectedFramePath.c_str()));
 		json_object_set_new(rootJ, "backgroundPath", json_string(backgroundPath.c_str()));
 		return rootJ;
 	}
@@ -356,7 +360,10 @@ struct SticksyFlipbookModule : Module {
 		int loadedFrameIndex = 0;
 		json_t* currentFrameIndexJ = json_object_get(rootJ, "currentFrameIndex");
 		if(currentFrameIndexJ && json_is_integer(currentFrameIndexJ)) loadedFrameIndex = json_integer_value(currentFrameIndexJ);
-		setFrames(loadedPaths, loadedFrameIndex);
+		std::string loadedSelectedFramePath;
+		json_t* selectedFramePathJ = json_object_get(rootJ, "selectedFramePath");
+		if(selectedFramePathJ && json_is_string(selectedFramePathJ)) loadedSelectedFramePath = json_string_value(selectedFramePathJ);
+		setFrames(loadedPaths, loadedFrameIndex, loadedSelectedFramePath);
 		json_t* playModeJ = json_object_get(rootJ, "playMode");
 		if(playModeJ && json_is_string(playModeJ)) playMode = playModeFromKey(json_string_value(playModeJ));
 		else playMode = PLAY_FORWARD;
@@ -379,6 +386,10 @@ struct SticksyFlipbookModule : Module {
 		bool fireEoc = false;
 		if(clkTrigger.process(inputs[CLK_INPUT].getVoltage())) {
 			int n = (int)framePaths.size();
+			if(n > 0) {
+				if(currentFrameIndex < 0) currentFrameIndex = 0;
+				if(currentFrameIndex >= n) currentFrameIndex = n - 1;
+			}
 			if(n <= 1) {
 				fireEoc = true;
 			}
@@ -607,7 +618,7 @@ struct SticksyFlipbookWidget : ModuleWidget {
 				std::vector<std::string> newPaths;
 				int selectedFrameIndex = 0;
 				detectSequencePaths(selectedPath, &newPaths, &selectedFrameIndex);
-				pushFlipbookModuleChange(module, "load Sticksy Flipbook image", [m, newPaths, selectedFrameIndex]() { m->setFrames(newPaths, selectedFrameIndex); });
+				pushFlipbookModuleChange(module, "load Sticksy Flipbook image", [m, newPaths, selectedFrameIndex, selectedPath]() { m->setFrames(newPaths, selectedFrameIndex, selectedPath); });
 			}
 		};
 		auto* load = createMenuItem<LoadFlipbookImageItem>("Load Flipbook Image...");
