@@ -228,6 +228,9 @@ struct SticksyFlipbookModule : Module {
 		EOC_OUTPUT,
 		NUM_OUTPUTS
 	};
+	std::string framePath;
+	std::shared_ptr<window::Svg> frameSvg;
+	int frameVersion = 0;
 
 	SticksyFlipbookModule() {
 		config(0, NUM_INPUTS, NUM_OUTPUTS, 0);
@@ -235,19 +238,116 @@ struct SticksyFlipbookModule : Module {
 		configOutput(EOC_OUTPUT, "EOC");
 	}
 
+	static bool isValidSvg(const std::shared_ptr<window::Svg>& svg) {
+		if(!svg) return false;
+		math::Vec size = svg->getSize();
+		return size.x > 0.f && size.y > 0.f && std::isfinite(size.x) && std::isfinite(size.y);
+	}
+
+	std::shared_ptr<window::Svg> loadSvgWithFallback(const std::string& path) {
+		std::shared_ptr<window::Svg> loaded;
+		if(!path.empty()) {
+			try { loaded = APP->window->loadSvg(path); } catch(...) {}
+		}
+		if(isValidSvg(loaded)) return loaded;
+		std::shared_ptr<window::Svg> fallback;
+		try { fallback = APP->window->loadSvg(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH)); } catch(...) {}
+		if(isValidSvg(fallback)) return fallback;
+		return nullptr;
+	}
+
+	void setFramePath(const std::string& path) {
+		framePath = path;
+		frameSvg = loadSvgWithFallback(framePath);
+		frameVersion++;
+	}
+
+	json_t* dataToJson() override {
+		json_t* rootJ = json_object();
+		json_object_set_new(rootJ, "framePath", json_string(framePath.c_str()));
+		return rootJ;
+	}
+
+	void dataFromJson(json_t* rootJ) override {
+		json_t* framePathJ = json_object_get(rootJ, "framePath");
+		if(framePathJ && json_is_string(framePathJ)) framePath = json_string_value(framePathJ);
+		frameSvg = loadSvgWithFallback(framePath);
+		frameVersion++;
+	}
+
 	void process(const ProcessArgs& args) override {
 		outputs[EOC_OUTPUT].setVoltage(0.f);
 	}
 };
 
+static void pushFlipbookModuleChange(SticksyFlipbookModule* module, const std::string& name, std::function<void()> applyChange) {
+	if(!module) return;
+	auto* h = new history::ModuleChange;
+	h->name = name;
+	h->moduleId = module->id;
+	h->oldModuleJ = module->toJson();
+	applyChange();
+	h->newModuleJ = module->toJson();
+	APP->history->push(h);
+}
+
+struct FlipbookCanvas : Widget {
+	SticksyFlipbookModule* module = NULL;
+	void draw(const DrawArgs& args) override {
+		nvgSave(args.vg);
+		nvgScissor(args.vg, 0.f, 0.f, box.size.x, box.size.y);
+		if(module && module->frameSvg) {
+			math::Vec size = module->frameSvg->getSize();
+			float x = std::round((box.size.x - size.x) * 0.5f);
+			float y = std::round((box.size.y - size.y) * 0.5f);
+			nvgSave(args.vg);
+			nvgTranslate(args.vg, x, y);
+			module->frameSvg->draw(args.vg);
+			nvgRestore(args.vg);
+		}
+		nvgRestore(args.vg);
+		Widget::draw(args);
+	}
+};
+
 struct SticksyFlipbookWidget : ModuleWidget {
+	FlipbookCanvas* canvas = NULL;
 	SticksyFlipbookWidget(SticksyFlipbookModule* module) {
 		setModule(module);
 		box.size = math::Vec(RACK_GRID_WIDTH * 12.f, RACK_GRID_HEIGHT);
 		setPanel(createPanel(asset::plugin(pluginInstance, "res/panels/flipbook/flipbook_12hp.svg")));
+		canvas = new FlipbookCanvas();
+		canvas->box = box.zeroPos();
+		canvas->module = module;
+		addChild(canvas);
 
 		addInput(createInputCentered<PJ301MPort>(mm2px(math::Vec(15.24f, 116.0f)), module, SticksyFlipbookModule::CLK_INPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(math::Vec(45.72f, 116.0f)), module, SticksyFlipbookModule::EOC_OUTPUT));
+	}
+
+	void appendContextMenu(Menu* menu) override {
+		auto* module = dynamic_cast<SticksyFlipbookModule*>(this->module);
+		assert(menu);
+		menu->addChild(new MenuSeparator());
+		struct LoadFlipbookImageItem : MenuItem {
+			SticksyFlipbookModule* module;
+			void onAction(const event::Action&) override {
+				if(!module) return;
+				osdialog_filters* filters = osdialog_filters_parse("Scalable Vector Graphic (.svg):svg");
+				char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);
+				osdialog_filters_free(filters);
+				if(!pathC) return;
+				std::string selectedPath = pathC;
+				std::free(pathC);
+				if(selectedPath.empty() || !hasSvgExtension(selectedPath)) return;
+				SticksyFlipbookModule* m = module;
+				std::string newPath = selectedPath;
+				pushFlipbookModuleChange(module, "load Sticksy Flipbook image", [m, newPath]() { m->setFramePath(newPath); });
+			}
+		};
+		auto* load = createMenuItem<LoadFlipbookImageItem>("Load Flipbook Image...");
+		load->module = module;
+		menu->addChild(load);
 	}
 };
 
