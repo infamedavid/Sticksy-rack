@@ -49,7 +49,6 @@ struct SticksyBlankModule : Module {
 		BACKGROUND_NEUTRAL,
 		BACKGROUND_WOOD,
 		BACKGROUND_METAL,
-		BACKGROUND_FABRIC,
 		BACKGROUND_PAPER,
 		BACKGROUND_BLACK,
 		BACKGROUND_WHITE,
@@ -77,11 +76,11 @@ struct SticksyBlankModule : Module {
 
 	SticksyBlankModule(int hp, std::string folder) : hpWidth(hp), panelFolder(std::move(folder)) { config(0,0,0,0); }
 
-	static const std::vector<std::string>& backgroundKeys() { static const std::vector<std::string> k={"neutral","wood","metal","fabric","paper","black","white"}; return k; }
+	static const std::vector<std::string>& backgroundKeys() { static const std::vector<std::string> k={"neutral","wood","metal","paper","black","white"}; return k; }
 	static const std::vector<std::string>& modeKeys() { static const std::vector<std::string> k={"single","multiple"}; return k; }
 	static const std::vector<std::string>& storageModeKeys() { static const std::vector<std::string> k={"referenced","library"}; return k; }
 
-	static Background backgroundFromKey(const std::string& key){ const auto& k=backgroundKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (Background)i; return BACKGROUND_METAL; }
+	static Background backgroundFromKey(const std::string& key){ if(key=="fabric") return BACKGROUND_METAL; const auto& k=backgroundKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (Background)i; return BACKGROUND_METAL; }
 	static Mode modeFromKey(const std::string& key){ const auto& k=modeKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (Mode)i; return MODE_SINGLE; }
 	static StorageMode storageModeFromKey(const std::string& key){ const auto& k=storageModeKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (StorageMode)i; return STORAGE_REFERENCED; }
 
@@ -207,7 +206,7 @@ struct SticksyBlankWidget : ModuleWidget {
 		if(module){ for(int i=0;i<(int)module->stickers.size();i++){ auto* item=createMenuItem<StickerItem>(module->stickers[i].displayName,RIGHT_ARROW); item->module=module; item->index=i; menu->addChild(item);} }
 		menu->addChild(new MenuSeparator()); auto* bgLabel=new MenuLabel(); bgLabel->text="Background"; menu->addChild(bgLabel);
 		struct BgItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::Background background; void onAction(const event::Action&) override { if(!module||module->background==background) return; SticksyBlankModule* m=module; SticksyBlankModule::Background selectedBackground=background; pushSticksyModuleChange(module,"change Sticksy background",[m,selectedBackground](){ m->setBackground(selectedBackground);}); } void step() override { MenuItem::step(); rightText=(module&&module->background==background)?"✔":""; }};
-		const std::vector<std::string> labels={"Neutral","Wood","Metal","Fabric","Paper","Black","White"}; for(int i=0;i<SticksyBlankModule::NUM_BACKGROUNDS;i++){ auto* item=createMenuItem<BgItem>(labels[i]); item->module=module; item->background=(SticksyBlankModule::Background)i; menu->addChild(item);} 
+		const std::vector<std::string> labels={"Neutral","Wood","Metal","Paper","Black","White"}; for(int i=0;i<SticksyBlankModule::NUM_BACKGROUNDS;i++){ auto* item=createMenuItem<BgItem>(labels[i]); item->module=module; item->background=(SticksyBlankModule::Background)i; menu->addChild(item);} 
 	}
 };
 
