@@ -15,6 +15,18 @@
   <defs
      id="defs1">
     <linearGradient
+       id="linearGradient9"
+       inkscape:collect="always">
+      <stop
+         style="stop-color:#076f6f;stop-opacity:1;"
+         offset="0"
+         id="stop9" />
+      <stop
+         style="stop-color:#504514;stop-opacity:0;"
+         offset="1"
+         id="stop10" />
+    </linearGradient>
+    <linearGradient
        id="linearGradient11"
        inkscape:collect="always">
       <stop
@@ -109,6 +121,16 @@
        y2="49.55954"
        gradientUnits="userSpaceOnUse"
        gradientTransform="matrix(1,0,0,0.81942918,0,-12.723508)" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#linearGradient9"
+       id="linearGradient10"
+       x1="30.470524"
+       y1="128.5"
+       x2="30.470524"
+       y2="90.750626"
+       gradientUnits="userSpaceOnUse"
+       gradientTransform="matrix(1,0,0,1.7902072,0,-84.803558)" />
   </defs>
   <sodipodi:namedview
      id="namedview1"
@@ -121,9 +143,9 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      showguides="true"
-     inkscape:zoom="0.83081228"
-     inkscape:cx="138.41875"
-     inkscape:cy="193.18443"
+     inkscape:zoom="1.6616246"
+     inkscape:cx="119.16049"
+     inkscape:cy="354.17146"
      inkscape:window-width="1920"
      inkscape:window-height="1009"
      inkscape:window-x="-8"
@@ -872,4 +894,8 @@
      style="fill:url(#linearGradient8);stroke-width:0.542005;opacity:0.49265905"
      d="M 0,128.5 H 60.959999 L 23.210631,90.750629 h 14.538737 z"
      sodipodi:nodetypes="ccccc" />
+  <path
+     id="rect3"
+     style="opacity:0.401674;fill:url(#linearGradient10);fill-opacity:1;stroke:none;stroke-width:0.267597"
+     d="M -0.01912028 48.192407 L -0.01912028 128.5999 L 60.960103 128.5999 L 60.960103 48.192407 L -0.01912028 48.192407 z " />
 </svg>
