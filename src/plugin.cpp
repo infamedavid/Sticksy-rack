@@ -2,6 +2,8 @@
 
 #include <osdialog.h>
 
+#include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -11,6 +13,7 @@
 #include <regex>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 Plugin* pluginInstance;
@@ -497,41 +500,6 @@ struct SticksyFlipbookWidget : ModuleWidget {
 		auto* module = dynamic_cast<SticksyFlipbookModule*>(this->module);
 		assert(menu);
 		menu->addChild(new MenuSeparator());
-		auto* pmLabel = new MenuLabel();
-		pmLabel->text = "Play Mode";
-		menu->addChild(pmLabel);
-		struct PlayModeItem : MenuItem {
-			SticksyFlipbookModule* module;
-			SticksyFlipbookModule::PlayMode mode;
-			void onAction(const event::Action&) override {
-				if(!module || module->playMode == mode) return;
-				SticksyFlipbookModule* m = module;
-				SticksyFlipbookModule::PlayMode nextMode = mode;
-				pushFlipbookModuleChange(module, "change Sticksy Flipbook play mode", [m, nextMode]() { m->setPlayMode(nextMode); });
-			}
-			void step() override {
-				MenuItem::step();
-				rightText = (module && module->playMode == mode) ? "✔" : "";
-			}
-		};
-		auto* pf = createMenuItem<PlayModeItem>("Forward");
-		pf->module = module;
-		pf->mode = SticksyFlipbookModule::PLAY_FORWARD;
-		menu->addChild(pf);
-		auto* pr = createMenuItem<PlayModeItem>("Reverse");
-		pr->module = module;
-		pr->mode = SticksyFlipbookModule::PLAY_REVERSE;
-		menu->addChild(pr);
-		auto* pp = createMenuItem<PlayModeItem>("Ping Pong");
-		pp->module = module;
-		pp->mode = SticksyFlipbookModule::PLAY_PING_PONG;
-		menu->addChild(pp);
-		auto* px = createMenuItem<PlayModeItem>("Random");
-		px->module = module;
-		px->mode = SticksyFlipbookModule::PLAY_RANDOM;
-		menu->addChild(px);
-
-		menu->addChild(new MenuSeparator());
 		struct LoadFlipbookImageItem : MenuItem {
 			SticksyFlipbookModule* module;
 			static bool parseFinalNumberSuffix(const std::string& stem, std::string* prefixOut, int* valueOut) {
@@ -569,13 +537,16 @@ struct SticksyFlipbookWidget : ModuleWidget {
 				}
 				std::vector<std::pair<int, std::string> > matches;
 				for(const std::string& entry : files) {
-					if(!hasSvgExtension(entry)) continue;
-					std::string stem = stripFinalSvgExtension(entry);
+					std::string entryFilename = system::getFilename(entry);
+					if(!hasSvgExtension(entryFilename)) continue;
+					std::string stem = stripFinalSvgExtension(entryFilename);
 					std::string entryPrefix;
 					int value = 0;
 					if(!parseFinalNumberSuffix(stem, &entryPrefix, &value)) continue;
 					if(entryPrefix != prefix) continue;
-					matches.push_back(std::make_pair(value, system::join(system::getDirectory(selectedPath), entry)));
+					std::string framePath = entry;
+					if(system::getDirectory(entry).empty()) framePath = system::join(system::getDirectory(selectedPath), entryFilename);
+					matches.push_back(std::make_pair(value, framePath));
 				}
 				if(matches.empty()) {
 					pathsOut->push_back(selectedPath);
@@ -658,6 +629,40 @@ struct SticksyFlipbookWidget : ModuleWidget {
 		auto* clearBackground = createMenuItem<ClearBackgroundItem>("Clear Background");
 		clearBackground->module = module;
 		menu->addChild(clearBackground);
+		menu->addChild(new MenuSeparator());
+		auto* pmLabel = new MenuLabel();
+		pmLabel->text = "Play Mode";
+		menu->addChild(pmLabel);
+		struct PlayModeItem : MenuItem {
+			SticksyFlipbookModule* module;
+			SticksyFlipbookModule::PlayMode mode;
+			void onAction(const event::Action&) override {
+				if(!module || module->playMode == mode) return;
+				SticksyFlipbookModule* m = module;
+				SticksyFlipbookModule::PlayMode nextMode = mode;
+				pushFlipbookModuleChange(module, "change Sticksy Flipbook play mode", [m, nextMode]() { m->setPlayMode(nextMode); });
+			}
+			void step() override {
+				MenuItem::step();
+				rightText = (module && module->playMode == mode) ? "✔" : "";
+			}
+		};
+		auto* pf = createMenuItem<PlayModeItem>("Forward");
+		pf->module = module;
+		pf->mode = SticksyFlipbookModule::PLAY_FORWARD;
+		menu->addChild(pf);
+		auto* pr = createMenuItem<PlayModeItem>("Reverse");
+		pr->module = module;
+		pr->mode = SticksyFlipbookModule::PLAY_REVERSE;
+		menu->addChild(pr);
+		auto* pp = createMenuItem<PlayModeItem>("Ping Pong");
+		pp->module = module;
+		pp->mode = SticksyFlipbookModule::PLAY_PING_PONG;
+		menu->addChild(pp);
+		auto* px = createMenuItem<PlayModeItem>("Random");
+		px->module = module;
+		px->mode = SticksyFlipbookModule::PLAY_RANDOM;
+		menu->addChild(px);
 	}
 };
 
