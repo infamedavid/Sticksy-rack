@@ -218,10 +218,380 @@ struct SticksyBlank5Widget : SticksyBlankWidget { SticksyBlank5Widget(SticksyBla
 struct SticksyBlank9Widget : SticksyBlankWidget { SticksyBlank9Widget(SticksyBlank9* module) : SticksyBlankWidget(module, 9) {} };
 struct SticksyBlank12Widget : SticksyBlankWidget { SticksyBlank12Widget(SticksyBlank12* module) : SticksyBlankWidget(module, 12) {} };
 
+
+struct SticksyFlipbookModule : Module {
+	enum InputIds {
+		CLK_INPUT,
+		NUM_INPUTS
+	};
+	enum OutputIds {
+		EOC_OUTPUT,
+		NUM_OUTPUTS
+	};
+	static const int MAX_FRAMES = 128;
+	enum PlayMode {
+		PLAY_FORWARD,
+		PLAY_REVERSE,
+		PLAY_PING_PONG,
+		PLAY_RANDOM,
+		NUM_PLAY_MODES
+	};
+	std::vector<std::string> framePaths;
+	std::vector<std::shared_ptr<window::Svg> > frameSvgs;
+	int currentFrameIndex = 0;
+	PlayMode playMode = PLAY_FORWARD;
+	int pingDirection = 1;
+	int randomCycleCounter = 0;
+	dsp::SchmittTrigger clkTrigger;
+	dsp::PulseGenerator eocPulse;
+	int frameVersion = 0;
+
+	SticksyFlipbookModule() {
+		config(0, NUM_INPUTS, NUM_OUTPUTS, 0);
+		configInput(CLK_INPUT, "CLK");
+		configOutput(EOC_OUTPUT, "EOC");
+	}
+
+	static bool isValidSvg(const std::shared_ptr<window::Svg>& svg) {
+		if(!svg) return false;
+		math::Vec size = svg->getSize();
+		return size.x > 0.f && size.y > 0.f && std::isfinite(size.x) && std::isfinite(size.y);
+	}
+
+	std::shared_ptr<window::Svg> loadSvgWithFallback(const std::string& path) {
+		std::shared_ptr<window::Svg> loaded;
+		if(!path.empty()) {
+			try { loaded = APP->window->loadSvg(path); } catch(...) {}
+		}
+		if(isValidSvg(loaded)) return loaded;
+		std::shared_ptr<window::Svg> fallback;
+		try { fallback = APP->window->loadSvg(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH)); } catch(...) {}
+		if(isValidSvg(fallback)) return fallback;
+		return nullptr;
+	}
+
+	void setFrames(const std::vector<std::string>& paths, int selectedIndex) {
+		framePaths = paths;
+		randomCycleCounter = 0;
+		if(framePaths.empty()) {
+			frameSvgs.clear();
+			currentFrameIndex = 0;
+			frameVersion++;
+			return;
+		}
+		frameSvgs.clear();
+		frameSvgs.reserve(framePaths.size());
+		for(const std::string& path : framePaths) {
+			frameSvgs.push_back(loadSvgWithFallback(path));
+		}
+		if(selectedIndex < 0) selectedIndex = 0;
+		if(selectedIndex >= (int)framePaths.size()) selectedIndex = (int)framePaths.size() - 1;
+		currentFrameIndex = selectedIndex;
+		frameVersion++;
+	}
+
+	void setPlayMode(PlayMode mode) {
+		if(mode < 0 || mode >= NUM_PLAY_MODES) mode = PLAY_FORWARD;
+		playMode = mode;
+		if(playMode == PLAY_PING_PONG) {
+			int last = (int)framePaths.size() - 1;
+			pingDirection = (currentFrameIndex == last && last > 0) ? -1 : 1;
+		}
+	}
+
+	static const std::vector<std::string>& playModeKeys() {
+		static const std::vector<std::string> k = {"forward", "reverse", "pingPong", "random"};
+		return k;
+	}
+	static PlayMode playModeFromKey(const std::string& key) {
+		const std::vector<std::string>& keys = playModeKeys();
+		for(int i = 0; i < (int)keys.size(); i++) if(keys[i] == key) return (PlayMode)i;
+		return PLAY_FORWARD;
+	}
+	std::string playModeKey() const { return playModeKeys()[playMode]; }
+
+	json_t* dataToJson() override {
+		json_t* rootJ = json_object();
+		json_t* framePathsJ = json_array();
+		for(const std::string& path : framePaths) {
+			json_array_append_new(framePathsJ, json_string(path.c_str()));
+		}
+		json_object_set_new(rootJ, "framePaths", framePathsJ);
+		json_object_set_new(rootJ, "currentFrameIndex", json_integer(currentFrameIndex));
+		json_object_set_new(rootJ, "playMode", json_string(playModeKey().c_str()));
+		json_object_set_new(rootJ, "pingDirection", json_integer(pingDirection));
+		json_object_set_new(rootJ, "randomCycleCounter", json_integer(randomCycleCounter));
+		return rootJ;
+	}
+
+	void dataFromJson(json_t* rootJ) override {
+		std::vector<std::string> loadedPaths;
+		json_t* framePathsJ = json_object_get(rootJ, "framePaths");
+		if(framePathsJ && json_is_array(framePathsJ)) {
+			size_t n = json_array_size(framePathsJ);
+			for(size_t i = 0; i < n && i < (size_t)MAX_FRAMES; i++) {
+				json_t* pathJ = json_array_get(framePathsJ, i);
+				if(pathJ && json_is_string(pathJ)) loadedPaths.push_back(json_string_value(pathJ));
+			}
+		}
+		json_t* legacyFramePathJ = json_object_get(rootJ, "framePath");
+		if(loadedPaths.empty() && legacyFramePathJ && json_is_string(legacyFramePathJ)) loadedPaths.push_back(json_string_value(legacyFramePathJ));
+		int loadedFrameIndex = 0;
+		json_t* currentFrameIndexJ = json_object_get(rootJ, "currentFrameIndex");
+		if(currentFrameIndexJ && json_is_integer(currentFrameIndexJ)) loadedFrameIndex = json_integer_value(currentFrameIndexJ);
+		setFrames(loadedPaths, loadedFrameIndex);
+		json_t* playModeJ = json_object_get(rootJ, "playMode");
+		if(playModeJ && json_is_string(playModeJ)) playMode = playModeFromKey(json_string_value(playModeJ));
+		else playMode = PLAY_FORWARD;
+		json_t* pingDirectionJ = json_object_get(rootJ, "pingDirection");
+		if(pingDirectionJ && json_is_integer(pingDirectionJ)) pingDirection = json_integer_value(pingDirectionJ);
+		if(pingDirection >= 0) pingDirection = 1;
+		else pingDirection = -1;
+		json_t* randomCycleCounterJ = json_object_get(rootJ, "randomCycleCounter");
+		if(randomCycleCounterJ && json_is_integer(randomCycleCounterJ)) randomCycleCounter = json_integer_value(randomCycleCounterJ);
+		if(randomCycleCounter < 0) randomCycleCounter = 0;
+		int n = (int)framePaths.size();
+		if(n > 1 && randomCycleCounter >= n) randomCycleCounter %= n;
+		if(n <= 1) randomCycleCounter = 0;
+	}
+
+	void process(const ProcessArgs& args) override {
+		bool fireEoc = false;
+		if(clkTrigger.process(inputs[CLK_INPUT].getVoltage())) {
+			int n = (int)framePaths.size();
+			if(n <= 1) {
+				fireEoc = true;
+			}
+			else {
+				int previousIndex = currentFrameIndex;
+				if(playMode == PLAY_FORWARD) {
+					currentFrameIndex++;
+					if(currentFrameIndex >= n) currentFrameIndex = 0;
+					if(previousIndex == n - 1 && currentFrameIndex == 0) fireEoc = true;
+				}
+				else if(playMode == PLAY_REVERSE) {
+					currentFrameIndex--;
+					if(currentFrameIndex < 0) currentFrameIndex = n - 1;
+					if(previousIndex == 0 && currentFrameIndex == n - 1) fireEoc = true;
+				}
+				else if(playMode == PLAY_PING_PONG) {
+					currentFrameIndex += pingDirection;
+					if(currentFrameIndex >= n) {
+						currentFrameIndex = n - 2;
+						pingDirection = -1;
+					}
+					else if(currentFrameIndex < 0) {
+						currentFrameIndex = 1;
+						pingDirection = 1;
+					}
+					if(previousIndex == 1 && currentFrameIndex == 0) fireEoc = true;
+				}
+				else if(playMode == PLAY_RANDOM) {
+					currentFrameIndex = (int)std::floor(random::uniform() * n);
+					if(currentFrameIndex >= n) currentFrameIndex = n - 1;
+					randomCycleCounter++;
+					if(randomCycleCounter >= n) {
+						randomCycleCounter = 0;
+						fireEoc = true;
+					}
+				}
+				frameVersion++;
+			}
+		}
+		if(fireEoc) eocPulse.trigger(1e-3f);
+		outputs[EOC_OUTPUT].setVoltage(eocPulse.process(args.sampleTime) ? 10.f : 0.f);
+	}
+};
+
+static void pushFlipbookModuleChange(SticksyFlipbookModule* module, const std::string& name, std::function<void()> applyChange) {
+	if(!module) return;
+	auto* h = new history::ModuleChange;
+	h->name = name;
+	h->moduleId = module->id;
+	h->oldModuleJ = module->toJson();
+	applyChange();
+	h->newModuleJ = module->toJson();
+	APP->history->push(h);
+}
+
+struct FlipbookCanvas : Widget {
+	SticksyFlipbookModule* module = NULL;
+	void draw(const DrawArgs& args) override {
+		nvgSave(args.vg);
+		nvgScissor(args.vg, 0.f, 0.f, box.size.x, box.size.y);
+		if(module && !module->frameSvgs.empty()) {
+			int frameIndex = module->currentFrameIndex;
+			if(frameIndex < 0 || frameIndex >= (int)module->frameSvgs.size()) frameIndex = 0;
+				std::shared_ptr<window::Svg> svg = module->frameSvgs[frameIndex];
+				if(svg) {
+					math::Vec size = svg->getSize();
+					float x = std::round((box.size.x - size.x) * 0.5f);
+					float y = std::round((box.size.y - size.y) * 0.5f);
+					nvgSave(args.vg);
+					nvgTranslate(args.vg, x, y);
+					svg->draw(args.vg);
+					nvgRestore(args.vg);
+				}
+			}
+		nvgRestore(args.vg);
+		Widget::draw(args);
+	}
+};
+
+struct SticksyFlipbookWidget : ModuleWidget {
+	FlipbookCanvas* canvas = NULL;
+	SticksyFlipbookWidget(SticksyFlipbookModule* module) {
+		setModule(module);
+		box.size = math::Vec(RACK_GRID_WIDTH * 12.f, RACK_GRID_HEIGHT);
+		setPanel(createPanel(asset::plugin(pluginInstance, "res/panels/flipbook/flipbook_12hp.svg")));
+		canvas = new FlipbookCanvas();
+		canvas->box = box.zeroPos();
+		canvas->module = module;
+		addChild(canvas);
+
+		addInput(createInputCentered<PJ301MPort>(mm2px(math::Vec(15.24f, 116.0f)), module, SticksyFlipbookModule::CLK_INPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(math::Vec(45.72f, 116.0f)), module, SticksyFlipbookModule::EOC_OUTPUT));
+	}
+
+	void appendContextMenu(Menu* menu) override {
+		auto* module = dynamic_cast<SticksyFlipbookModule*>(this->module);
+		assert(menu);
+		menu->addChild(new MenuSeparator());
+		auto* pmLabel = new MenuLabel();
+		pmLabel->text = "Play Mode";
+		menu->addChild(pmLabel);
+		struct PlayModeItem : MenuItem {
+			SticksyFlipbookModule* module;
+			SticksyFlipbookModule::PlayMode mode;
+			void onAction(const event::Action&) override {
+				if(!module || module->playMode == mode) return;
+				SticksyFlipbookModule* m = module;
+				SticksyFlipbookModule::PlayMode nextMode = mode;
+				pushFlipbookModuleChange(module, "change Sticksy Flipbook play mode", [m, nextMode]() { m->setPlayMode(nextMode); });
+			}
+			void step() override {
+				MenuItem::step();
+				rightText = (module && module->playMode == mode) ? "✔" : "";
+			}
+		};
+		auto* pf = createMenuItem<PlayModeItem>("Forward");
+		pf->module = module;
+		pf->mode = SticksyFlipbookModule::PLAY_FORWARD;
+		menu->addChild(pf);
+		auto* pr = createMenuItem<PlayModeItem>("Reverse");
+		pr->module = module;
+		pr->mode = SticksyFlipbookModule::PLAY_REVERSE;
+		menu->addChild(pr);
+		auto* pp = createMenuItem<PlayModeItem>("Ping Pong");
+		pp->module = module;
+		pp->mode = SticksyFlipbookModule::PLAY_PING_PONG;
+		menu->addChild(pp);
+		auto* px = createMenuItem<PlayModeItem>("Random");
+		px->module = module;
+		px->mode = SticksyFlipbookModule::PLAY_RANDOM;
+		menu->addChild(px);
+
+		menu->addChild(new MenuSeparator());
+		struct LoadFlipbookImageItem : MenuItem {
+			SticksyFlipbookModule* module;
+			static bool parseFinalNumberSuffix(const std::string& stem, std::string* prefixOut, int* valueOut) {
+				if(stem.empty()) return false;
+				int i = (int)stem.size() - 1;
+				while(i >= 0 && std::isdigit((unsigned char)stem[i])) i--;
+				int digitStart = i + 1;
+				if(digitStart >= (int)stem.size()) return false;
+				std::string numberPart = stem.substr(digitStart);
+				if(numberPart.empty()) return false;
+				long value = std::strtol(numberPart.c_str(), NULL, 10);
+				if(value < 0) return false;
+				*prefixOut = stem.substr(0, digitStart);
+				*valueOut = (int)value;
+				return true;
+			}
+
+			static void detectSequencePaths(const std::string& selectedPath, std::vector<std::string>* pathsOut, int* selectedIndexOut) {
+				pathsOut->clear();
+				*selectedIndexOut = 0;
+				std::string selectedFilename = system::getFilename(selectedPath);
+				std::string selectedStem = stripFinalSvgExtension(selectedFilename);
+				std::string prefix;
+				int selectedValue = 0;
+				if(!parseFinalNumberSuffix(selectedStem, &prefix, &selectedValue)) {
+					pathsOut->push_back(selectedPath);
+					return;
+				}
+				std::vector<std::string> files;
+				try {
+					files = system::getEntries(system::getDirectory(selectedPath));
+				} catch(...) {
+					pathsOut->push_back(selectedPath);
+					return;
+				}
+				std::vector<std::pair<int, std::string> > matches;
+				for(const std::string& entry : files) {
+					if(!hasSvgExtension(entry)) continue;
+					std::string stem = stripFinalSvgExtension(entry);
+					std::string entryPrefix;
+					int value = 0;
+					if(!parseFinalNumberSuffix(stem, &entryPrefix, &value)) continue;
+					if(entryPrefix != prefix) continue;
+					matches.push_back(std::make_pair(value, system::join(system::getDirectory(selectedPath), entry)));
+				}
+				if(matches.empty()) {
+					pathsOut->push_back(selectedPath);
+					return;
+				}
+				std::sort(matches.begin(), matches.end(), [](const std::pair<int, std::string>& a, const std::pair<int, std::string>& b) {
+					if(a.first != b.first) return a.first < b.first;
+					return string::lowercase(a.second) < string::lowercase(b.second);
+				});
+				for(size_t i = 0; i < matches.size() && (int)i < SticksyFlipbookModule::MAX_FRAMES; i++) {
+					pathsOut->push_back(matches[i].second);
+				}
+				for(size_t i = 0; i < pathsOut->size(); i++) {
+					if(system::getFilename((*pathsOut)[i]) == selectedFilename) {
+						*selectedIndexOut = (int)i;
+						return;
+					}
+				}
+				for(size_t i = 0; i < pathsOut->size(); i++) {
+					std::string stem = stripFinalSvgExtension(system::getFilename((*pathsOut)[i]));
+					std::string entryPrefix;
+					int value = 0;
+					if(parseFinalNumberSuffix(stem, &entryPrefix, &value) && value == selectedValue && entryPrefix == prefix) {
+						*selectedIndexOut = (int)i;
+						return;
+					}
+				}
+			}
+
+			void onAction(const event::Action&) override {
+				if(!module) return;
+				osdialog_filters* filters = osdialog_filters_parse("Scalable Vector Graphic (.svg):svg");
+				char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);
+				osdialog_filters_free(filters);
+				if(!pathC) return;
+				std::string selectedPath = pathC;
+				std::free(pathC);
+				if(selectedPath.empty() || !hasSvgExtension(selectedPath)) return;
+				SticksyFlipbookModule* m = module;
+				std::vector<std::string> newPaths;
+				int selectedFrameIndex = 0;
+				detectSequencePaths(selectedPath, &newPaths, &selectedFrameIndex);
+				pushFlipbookModuleChange(module, "load Sticksy Flipbook image", [m, newPaths, selectedFrameIndex]() { m->setFrames(newPaths, selectedFrameIndex); });
+			}
+		};
+		auto* load = createMenuItem<LoadFlipbookImageItem>("Load Flipbook Image...");
+		load->module = module;
+		menu->addChild(load);
+	}
+};
+
 Model* modelSticksyBlank3 = createModel<SticksyBlank3, SticksyBlank3Widget>("SticksyBlank3");
 Model* modelSticksyBlank5 = createModel<SticksyBlank5, SticksyBlank5Widget>("SticksyBlank5");
 Model* modelSticksyBlank9 = createModel<SticksyBlank9, SticksyBlank9Widget>("SticksyBlank9");
 Model* modelSticksyBlank12 = createModel<SticksyBlank12, SticksyBlank12Widget>("SticksyBlank12");
+Model* modelSticksyFlipbook = createModel<SticksyFlipbookModule, SticksyFlipbookWidget>("SticksyFlipbook");
 
 void init(Plugin* p) {
 	pluginInstance = p;
@@ -229,4 +599,5 @@ void init(Plugin* p) {
 	p->addModel(modelSticksyBlank5);
 	p->addModel(modelSticksyBlank9);
 	p->addModel(modelSticksyBlank12);
+	p->addModel(modelSticksyFlipbook);
 }
