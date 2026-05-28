@@ -232,6 +232,7 @@ struct SticksyFlipbookModule : Module {
 	std::vector<std::string> framePaths;
 	std::vector<std::shared_ptr<window::Svg> > frameSvgs;
 	int currentFrameIndex = 0;
+	dsp::SchmittTrigger clkTrigger;
 	int frameVersion = 0;
 
 	SticksyFlipbookModule() {
@@ -307,6 +308,13 @@ struct SticksyFlipbookModule : Module {
 	}
 
 	void process(const ProcessArgs& args) override {
+		if(clkTrigger.process(inputs[CLK_INPUT].getVoltage())) {
+			if(!framePaths.empty()) {
+				currentFrameIndex++;
+				if(currentFrameIndex >= (int)framePaths.size()) currentFrameIndex = 0;
+				frameVersion++;
+			}
+		}
 		outputs[EOC_OUTPUT].setVoltage(0.f);
 	}
 };
