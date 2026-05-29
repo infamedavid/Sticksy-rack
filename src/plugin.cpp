@@ -22,6 +22,74 @@ static const std::string FALLBACK_STICKER_PATH = "res/fallback/Sticksy.svg";
 static constexpr float DEG_TO_RAD = 0.01745329251994329577f;
 static const std::string SVG_EXTENSION_WITH_DOT = ".svg";
 
+static const std::string STICKSY_USER_LIBRARY_FOLDER = "Sticksy";
+static const std::string STICKSY_STICKERS_FOLDER = "Stickers";
+static const std::string STICKSY_ANIMATION_FOLDER = "Animation";
+static const std::string STICKSY_VC_CAT_FOLDER = "vc_cat";
+static const std::string DEFAULT_STICKERS_TEMPLATE_PATH = "res/default/Stickers";
+static const std::string DEFAULT_VC_CAT_TEMPLATE_PATH = "res/default/Animation/vc_cat";
+
+static bool hasSvgExtension(const std::string& pathOrFilename);
+
+static bool createDirectoryIfMissing(const std::string& path) {
+	if(system::exists(path)) return true;
+	if(system::createDirectory(path)) return true;
+	WARN("Sticksy: Could not create user library folder '%s'", path.c_str());
+	return false;
+}
+
+static std::string sticksyUserLibraryPath() {
+	return asset::user(STICKSY_USER_LIBRARY_FOLDER);
+}
+
+static std::string sticksyUserStickerLibraryPath() {
+	return system::join(sticksyUserLibraryPath(), STICKSY_STICKERS_FOLDER);
+}
+
+static void copySvgFilesIfMissing(const std::string& sourceDir, const std::string& destDir) {
+	if(!system::exists(sourceDir)) {
+		WARN("Sticksy: Default asset source folder '%s' does not exist", sourceDir.c_str());
+		return;
+	}
+	if(!createDirectoryIfMissing(destDir)) return;
+
+	std::vector<std::string> entries;
+	try {
+		entries = system::getEntries(sourceDir);
+	}
+	catch(...) {
+		WARN("Sticksy: Could not read default asset source folder '%s'", sourceDir.c_str());
+		return;
+	}
+
+	for(const std::string& entry : entries) {
+		std::string filename = system::getFilename(entry);
+		if(filename.empty() || !hasSvgExtension(filename)) continue;
+		std::string sourcePath = entry;
+		if(system::getDirectory(entry).empty()) sourcePath = system::join(sourceDir, filename);
+		std::string destPath = system::join(destDir, filename);
+		if(system::exists(destPath)) continue;
+		if(!system::copy(sourcePath, destPath)) {
+			WARN("Sticksy: Could not copy default asset '%s' to '%s'", sourcePath.c_str(), destPath.c_str());
+		}
+	}
+}
+
+static void ensureDefaultSticksyLibraryInstalled() {
+	std::string sticksyDir = sticksyUserLibraryPath();
+	std::string stickersDir = system::join(sticksyDir, STICKSY_STICKERS_FOLDER);
+	std::string animationDir = system::join(sticksyDir, STICKSY_ANIMATION_FOLDER);
+	std::string vcCatDir = system::join(animationDir, STICKSY_VC_CAT_FOLDER);
+
+	createDirectoryIfMissing(sticksyDir);
+	createDirectoryIfMissing(stickersDir);
+	createDirectoryIfMissing(animationDir);
+	createDirectoryIfMissing(vcCatDir);
+
+	copySvgFilesIfMissing(asset::plugin(pluginInstance, DEFAULT_STICKERS_TEMPLATE_PATH), stickersDir);
+	copySvgFilesIfMissing(asset::plugin(pluginInstance, DEFAULT_VC_CAT_TEMPLATE_PATH), vcCatDir);
+}
+
 static bool hasSvgExtension(const std::string& pathOrFilename) {
 	std::string ext = system::getExtension(pathOrFilename);
 	ext = string::lowercase(ext);
@@ -100,10 +168,10 @@ struct SticksyBlankModule : Module {
 		if(filename.empty()) return sourcePath;
 		std::string stem = stripFinalSvgExtension(filename);
 		if(stem.empty()) stem = filename;
-		std::string sticksyDir=asset::user("Sticksy");
-		if(!system::exists(sticksyDir) && !system::createDirectory(sticksyDir)) return sourcePath;
-		std::string libraryDir=system::join(sticksyDir,"stickers");
-		if(!system::exists(libraryDir) && !system::createDirectory(libraryDir)) return sourcePath;
+		std::string sticksyDir=sticksyUserLibraryPath();
+		if(!createDirectoryIfMissing(sticksyDir)) return sourcePath;
+		std::string libraryDir=sticksyUserStickerLibraryPath();
+		if(!createDirectoryIfMissing(libraryDir)) return sourcePath;
 		std::string candidate=system::join(libraryDir,filename); int suffix=1;
 		while(system::exists(candidate)){ std::ostringstream name; name<<stem<<"_"<<std::setfill('0')<<std::setw(3)<<suffix++<<SVG_EXTENSION_WITH_DOT; candidate=system::join(libraryDir,name.str()); }
 		if(!system::copy(sourcePath,candidate)) return sourcePath;
@@ -690,6 +758,7 @@ Model* modelSticksyFlipbook = createModel<SticksyFlipbookModule, SticksyFlipbook
 
 void init(Plugin* p) {
 	pluginInstance = p;
+	ensureDefaultSticksyLibraryInstalled();
 	p->addModel(modelSticksyBlank3);
 	p->addModel(modelSticksyBlank5);
 	p->addModel(modelSticksyBlank9);
