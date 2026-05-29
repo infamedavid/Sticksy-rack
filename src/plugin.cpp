@@ -224,6 +224,7 @@ struct SticksyBlank12Widget : SticksyBlankWidget { SticksyBlank12Widget(SticksyB
 struct SticksyFlipbookModule : Module {
 	enum InputIds {
 		CLK_INPUT,
+		RST_INPUT,
 		NUM_INPUTS
 	};
 	enum OutputIds {
@@ -248,12 +249,14 @@ struct SticksyFlipbookModule : Module {
 	int pingDirection = 1;
 	int randomCycleCounter = 0;
 	dsp::SchmittTrigger clkTrigger;
+	dsp::SchmittTrigger rstTrigger;
 	dsp::PulseGenerator eocPulse;
 	int frameVersion = 0;
 
 	SticksyFlipbookModule() {
 		config(0, NUM_INPUTS, NUM_OUTPUTS, 0);
 		configInput(CLK_INPUT, "CLK");
+		configInput(RST_INPUT, "RST");
 		configOutput(EOC_OUTPUT, "EOC");
 	}
 
@@ -384,9 +387,22 @@ struct SticksyFlipbookModule : Module {
 		backgroundSvg = loadSvgWithoutFallback(backgroundPath);
 	}
 
+	void resetPlaybackToFirstFrame() {
+		if(framePaths.empty()) return;
+		currentFrameIndex = 0;
+		pingDirection = 1;
+		randomCycleCounter = 0;
+		frameVersion++;
+	}
+
 	void process(const ProcessArgs& args) override {
 		bool fireEoc = false;
-		if(clkTrigger.process(inputs[CLK_INPUT].getVoltage())) {
+		bool didReset = false;
+		if(rstTrigger.process(inputs[RST_INPUT].getVoltage())) {
+			resetPlaybackToFirstFrame();
+			didReset = true;
+		}
+		if(!didReset && clkTrigger.process(inputs[CLK_INPUT].getVoltage())) {
 			int n = (int)framePaths.size();
 			if(n > 0) {
 				if(currentFrameIndex < 0) currentFrameIndex = 0;
@@ -492,6 +508,7 @@ struct SticksyFlipbookWidget : ModuleWidget {
 		addChild(canvas);
 
 		addInput(createInputCentered<PJ301MPort>(mm2px(math::Vec(15.24f, 116.0f)), module, SticksyFlipbookModule::CLK_INPUT));
+		addInput(createInputCentered<PJ301MPort>(mm2px(math::Vec(30.48f, 116.0f)), module, SticksyFlipbookModule::RST_INPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(math::Vec(45.72f, 116.0f)), module, SticksyFlipbookModule::EOC_OUTPUT));
 	}
 
