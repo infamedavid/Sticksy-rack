@@ -6,11 +6,9 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
-#include <fstream>
 #include <functional>
 #include <iomanip>
 #include <memory>
-#include <regex>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -268,18 +266,6 @@ struct SticksyBlankModule : Module {
 	}
 	void loadStickerSvg(StickerEntry& entry){ entry.svg=loadSvgWithFallback(entry.path); }
 
-	math::Vec estimateStickerSize(const StickerEntry& entry) {
-		math::Vec size; if(entry.svg) size=entry.svg->getSize();
-		auto isBad=[](float v){ return !std::isfinite(v)||v<=0.f||v>100000.f; };
-		if(!isBad(size.x)&&!isBad(size.y)) return size;
-		std::ifstream file(entry.path);
-		if(file.is_open()){
-			std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-			std::smatch m; std::regex re(R"(viewBox\s*=\s*["'][^"']*?(-?\d*\.?\d+)[ ,]+(-?\d*\.?\d+)[ ,]+(\d*\.?\d+)[ ,]+(\d*\.?\d+)[^"']*["'])", std::regex::icase);
-			if(std::regex_search(text,m,re)&&m.size()>=5){ float vw=std::stof(m[3].str()), vh=std::stof(m[4].str()); if(!isBad(vw)&&!isBad(vh)) return math::Vec(vw,vh); }
-		}
-		return math::Vec(100.f,100.f);
-	}
 
 	void assignPlacementForMultiple(StickerEntry& entry){
 		const float panelW=RACK_GRID_WIDTH*(float)hpWidth, panelH=RACK_GRID_HEIGHT; entry.rotation=random::uniform()*36.f-18.f;
@@ -456,9 +442,19 @@ struct SticksyFlipbookModule : Module {
 		return nullptr;
 	}
 
+	std::shared_ptr<window::Svg> loadBackgroundSvg(const std::string& path) {
+		if(path.empty()) return nullptr;
+		std::shared_ptr<window::Svg> loaded = loadSvgWithoutFallback(path);
+		if(isValidSvg(loaded)) return loaded;
+		std::shared_ptr<window::Svg> fallback;
+		try { fallback = APP->window->loadSvg(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH)); } catch(...) {}
+		if(isValidSvg(fallback)) return fallback;
+		return nullptr;
+	}
+
 	void setBackgroundPath(const std::string& path) {
 		backgroundPath = path;
-		backgroundSvg = loadSvgWithoutFallback(backgroundPath);
+		backgroundSvg = loadBackgroundSvg(backgroundPath);
 		frameVersion++;
 	}
 
@@ -483,7 +479,6 @@ struct SticksyFlipbookModule : Module {
 		json_object_set_new(rootJ, "currentFrameIndex", json_integer(currentFrameIndex));
 		json_object_set_new(rootJ, "playMode", json_string(playModeKey().c_str()));
 		json_object_set_new(rootJ, "pingDirection", json_integer(pingDirection));
-		json_object_set_new(rootJ, "randomCycleCounter", json_integer(randomCycleCounter));
 		json_object_set_new(rootJ, "selectedFramePath", json_string(selectedFramePath.c_str()));
 		json_object_set_new(rootJ, "backgroundPath", json_string(backgroundPath.c_str()));
 		return rootJ;
@@ -515,15 +510,10 @@ struct SticksyFlipbookModule : Module {
 		if(pingDirectionJ && json_is_integer(pingDirectionJ)) pingDirection = json_integer_value(pingDirectionJ);
 		if(pingDirection >= 0) pingDirection = 1;
 		else pingDirection = -1;
-		json_t* randomCycleCounterJ = json_object_get(rootJ, "randomCycleCounter");
-		if(randomCycleCounterJ && json_is_integer(randomCycleCounterJ)) randomCycleCounter = json_integer_value(randomCycleCounterJ);
-		if(randomCycleCounter < 0) randomCycleCounter = 0;
-		int n = (int)framePaths.size();
-		if(n > 1 && randomCycleCounter >= n) randomCycleCounter %= n;
-		if(n <= 1) randomCycleCounter = 0;
+		randomCycleCounter = 0;
 		json_t* backgroundPathJ = json_object_get(rootJ, "backgroundPath");
 		if(backgroundPathJ && json_is_string(backgroundPathJ)) backgroundPath = json_string_value(backgroundPathJ);
-		backgroundSvg = loadSvgWithoutFallback(backgroundPath);
+		backgroundSvg = loadBackgroundSvg(backgroundPath);
 	}
 
 	void resetPlaybackToFirstFrame() {
@@ -604,32 +594,38 @@ static void pushFlipbookModuleChange(SticksyFlipbookModule* module, const std::s
 
 struct FlipbookCanvas : Widget {
 	SticksyFlipbookModule* module = NULL;
+
+	static bool isDrawableSvg(const std::shared_ptr<window::Svg>& svg) {
+		if(!svg) return false;
+		math::Vec size = svg->getSize();
+		return size.x > 0.f && size.y > 0.f && std::isfinite(size.x) && std::isfinite(size.y);
+	}
+
+	void drawCenteredSvg(const DrawArgs& args, const std::shared_ptr<window::Svg>& svg) {
+		if(!isDrawableSvg(svg)) return;
+		math::Vec size = svg->getSize();
+		float x = std::round((box.size.x - size.x) * 0.5f);
+		float y = std::round((box.size.y - size.y) * 0.5f);
+		nvgSave(args.vg);
+		nvgTranslate(args.vg, x, y);
+		svg->draw(args.vg);
+		nvgRestore(args.vg);
+	}
+
 	void draw(const DrawArgs& args) override {
 		nvgSave(args.vg);
 		nvgScissor(args.vg, 0.f, 0.f, box.size.x, box.size.y);
-		if(module && module->backgroundSvg) {
-			math::Vec size = module->backgroundSvg->getSize();
-			float x = std::round((box.size.x - size.x) * 0.5f);
-			float y = std::round((box.size.y - size.y) * 0.5f);
-			nvgSave(args.vg);
-			nvgTranslate(args.vg, x, y);
-			module->backgroundSvg->draw(args.vg);
-			nvgRestore(args.vg);
-		}
-		if(module && !module->frameSvgs.empty()) {
-			int frameIndex = module->currentFrameIndex;
-			if(frameIndex < 0 || frameIndex >= (int)module->frameSvgs.size()) frameIndex = 0;
-				std::shared_ptr<window::Svg> svg = module->frameSvgs[frameIndex];
-				if(svg) {
-					math::Vec size = svg->getSize();
-					float x = std::round((box.size.x - size.x) * 0.5f);
-					float y = std::round((box.size.y - size.y) * 0.5f);
-					nvgSave(args.vg);
-					nvgTranslate(args.vg, x, y);
-					svg->draw(args.vg);
-					nvgRestore(args.vg);
-				}
+
+		if(module) {
+			drawCenteredSvg(args, module->backgroundSvg);
+
+			if(!module->frameSvgs.empty()) {
+				int frameIndex = module->currentFrameIndex;
+				if(frameIndex < 0 || frameIndex >= (int)module->frameSvgs.size()) frameIndex = 0;
+				drawCenteredSvg(args, module->frameSvgs[frameIndex]);
 			}
+		}
+
 		nvgRestore(args.vg);
 		Widget::draw(args);
 	}
@@ -714,8 +710,9 @@ struct SticksyFlipbookWidget : ModuleWidget {
 				for(size_t i = 0; i < matches.size() && (int)i < SticksyFlipbookModule::MAX_FRAMES; i++) {
 					pathsOut->push_back(matches[i].second);
 				}
+				std::string selectedNormalizedPath = normalizePathForCompare(selectedPath);
 				for(size_t i = 0; i < pathsOut->size(); i++) {
-					if(system::getFilename((*pathsOut)[i]) == selectedFilename) {
+					if(normalizePathForCompare((*pathsOut)[i]) == selectedNormalizedPath) {
 						*selectedIndexOut = (int)i;
 						return;
 					}
