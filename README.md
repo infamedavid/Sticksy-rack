@@ -35,7 +35,6 @@ Use **Load Flipbook Image...** and select any SVG from a numbered sequence.
 
 Example:
 
-```text
 gato_01.svg
 gato_02.svg
 gato_03.svg
