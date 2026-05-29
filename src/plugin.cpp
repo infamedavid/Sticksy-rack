@@ -442,9 +442,19 @@ struct SticksyFlipbookModule : Module {
 		return nullptr;
 	}
 
+	std::shared_ptr<window::Svg> loadBackgroundSvg(const std::string& path) {
+		if(path.empty()) return nullptr;
+		std::shared_ptr<window::Svg> loaded = loadSvgWithoutFallback(path);
+		if(isValidSvg(loaded)) return loaded;
+		std::shared_ptr<window::Svg> fallback;
+		try { fallback = APP->window->loadSvg(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH)); } catch(...) {}
+		if(isValidSvg(fallback)) return fallback;
+		return nullptr;
+	}
+
 	void setBackgroundPath(const std::string& path) {
 		backgroundPath = path;
-		backgroundSvg = loadSvgWithoutFallback(backgroundPath);
+		backgroundSvg = loadBackgroundSvg(backgroundPath);
 		frameVersion++;
 	}
 
@@ -469,7 +479,6 @@ struct SticksyFlipbookModule : Module {
 		json_object_set_new(rootJ, "currentFrameIndex", json_integer(currentFrameIndex));
 		json_object_set_new(rootJ, "playMode", json_string(playModeKey().c_str()));
 		json_object_set_new(rootJ, "pingDirection", json_integer(pingDirection));
-		json_object_set_new(rootJ, "randomCycleCounter", json_integer(randomCycleCounter));
 		json_object_set_new(rootJ, "selectedFramePath", json_string(selectedFramePath.c_str()));
 		json_object_set_new(rootJ, "backgroundPath", json_string(backgroundPath.c_str()));
 		return rootJ;
@@ -501,15 +510,10 @@ struct SticksyFlipbookModule : Module {
 		if(pingDirectionJ && json_is_integer(pingDirectionJ)) pingDirection = json_integer_value(pingDirectionJ);
 		if(pingDirection >= 0) pingDirection = 1;
 		else pingDirection = -1;
-		json_t* randomCycleCounterJ = json_object_get(rootJ, "randomCycleCounter");
-		if(randomCycleCounterJ && json_is_integer(randomCycleCounterJ)) randomCycleCounter = json_integer_value(randomCycleCounterJ);
-		if(randomCycleCounter < 0) randomCycleCounter = 0;
-		int n = (int)framePaths.size();
-		if(n > 1 && randomCycleCounter >= n) randomCycleCounter %= n;
-		if(n <= 1) randomCycleCounter = 0;
+		randomCycleCounter = 0;
 		json_t* backgroundPathJ = json_object_get(rootJ, "backgroundPath");
 		if(backgroundPathJ && json_is_string(backgroundPathJ)) backgroundPath = json_string_value(backgroundPathJ);
-		backgroundSvg = loadSvgWithoutFallback(backgroundPath);
+		backgroundSvg = loadBackgroundSvg(backgroundPath);
 	}
 
 	void resetPlaybackToFirstFrame() {
@@ -706,8 +710,9 @@ struct SticksyFlipbookWidget : ModuleWidget {
 				for(size_t i = 0; i < matches.size() && (int)i < SticksyFlipbookModule::MAX_FRAMES; i++) {
 					pathsOut->push_back(matches[i].second);
 				}
+				std::string selectedNormalizedPath = normalizePathForCompare(selectedPath);
 				for(size_t i = 0; i < pathsOut->size(); i++) {
-					if(system::getFilename((*pathsOut)[i]) == selectedFilename) {
+					if(normalizePathForCompare((*pathsOut)[i]) == selectedNormalizedPath) {
 						*selectedIndexOut = (int)i;
 						return;
 					}
