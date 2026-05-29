@@ -177,7 +177,7 @@ struct SticksyBlankModule : Module {
 
 	int hpWidth = 5;
 	std::string panelFolder = "5hp";
-	Background background = BACKGROUND_METAL;
+	Background background = defaultBackground();
 	Mode mode = MODE_SINGLE;
 	StorageMode storageMode = STORAGE_REFERENCED;
 	std::vector<StickerEntry> stickers;
@@ -187,10 +187,11 @@ struct SticksyBlankModule : Module {
 	SticksyBlankModule(int hp, std::string folder) : hpWidth(hp), panelFolder(std::move(folder)) { config(0,0,0,0); }
 
 	static const std::vector<std::string>& backgroundKeys() { static const std::vector<std::string> k={"neutral","wood","metal","paper","black","white"}; return k; }
+	static Background defaultBackground() { return BACKGROUND_BLACK; }
 	static const std::vector<std::string>& modeKeys() { static const std::vector<std::string> k={"single","multiple"}; return k; }
 	static const std::vector<std::string>& storageModeKeys() { static const std::vector<std::string> k={"referenced","library"}; return k; }
 
-	static Background backgroundFromKey(const std::string& key){ if(key=="fabric") return BACKGROUND_METAL; const auto& k=backgroundKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (Background)i; return BACKGROUND_METAL; }
+	static Background backgroundFromKey(const std::string& key){ if(key=="fabric") return BACKGROUND_METAL; const auto& k=backgroundKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (Background)i; return defaultBackground(); }
 	static Mode modeFromKey(const std::string& key){ const auto& k=modeKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (Mode)i; return MODE_SINGLE; }
 	static StorageMode storageModeFromKey(const std::string& key){ const auto& k=storageModeKeys(); for(int i=0;i<(int)k.size();i++) if(k[i]==key) return (StorageMode)i; return STORAGE_REFERENCED; }
 
@@ -198,7 +199,7 @@ struct SticksyBlankModule : Module {
 	std::string modeKey() const { return modeKeys()[mode]; }
 	std::string storageModeKey() const { return storageModeKeys()[storageMode]; }
 
-	void setBackground(Background b){ if(b<0||b>=NUM_BACKGROUNDS) b=BACKGROUND_METAL; if(background==b) return; background=b; panelVersion++; }
+	void setBackground(Background b){ if(b<0||b>=NUM_BACKGROUNDS) b=defaultBackground(); if(background==b) return; background=b; panelVersion++; }
 	void setMode(Mode m){ if(m<0||m>=NUM_MODES) m=MODE_SINGLE; if(!stickers.empty()) return; if(mode==m) return; mode=m; stickerVersion++; }
 	void setStorageMode(StorageMode s){ if(s<0||s>=NUM_STORAGE_MODES) s=STORAGE_REFERENCED; if(storageMode==s) return; storageMode=s; if(storageMode==STORAGE_STICKSY_LIBRARY) migrateStickersToLibrary(); stickerVersion++; }
 	void replaceSingleSticker(const StickerEntry& e){ stickers.clear(); stickers.push_back(e); stickerVersion++; }
@@ -283,7 +284,7 @@ struct SticksyBlankModule : Module {
 		json_t* stickersJ=json_array(); for(const StickerEntry& s:stickers){ json_t* j=json_object(); json_object_set_new(j,"path",json_string(s.path.c_str())); json_object_set_new(j,"displayName",json_string(s.displayName.c_str())); json_object_set_new(j,"x",json_real(s.x)); json_object_set_new(j,"y",json_real(s.y)); json_object_set_new(j,"rotation",json_real(s.rotation)); json_array_append_new(stickersJ,j);} json_object_set_new(rootJ,"stickers",stickersJ); return rootJ;
 	}
 	void dataFromJson(json_t* rootJ) override {
-		json_t* backgroundJ=json_object_get(rootJ,"background"); if(backgroundJ&&json_is_string(backgroundJ)) setBackground(backgroundFromKey(json_string_value(backgroundJ))); else setBackground(BACKGROUND_METAL);
+		json_t* backgroundJ=json_object_get(rootJ,"background"); if(backgroundJ&&json_is_string(backgroundJ)) setBackground(backgroundFromKey(json_string_value(backgroundJ))); else setBackground(defaultBackground());
 		json_t* modeJ=json_object_get(rootJ,"mode"); mode=(modeJ&&json_is_string(modeJ))?modeFromKey(json_string_value(modeJ)):MODE_SINGLE;
 		json_t* storageModeJ=json_object_get(rootJ,"storageMode"); storageMode=(storageModeJ&&json_is_string(storageModeJ))?storageModeFromKey(json_string_value(storageModeJ)):STORAGE_REFERENCED;
 		clearStickers(); json_t* stickersJ=json_object_get(rootJ,"stickers"); if(stickersJ&&json_is_array(stickersJ)){ size_t n=json_array_size(stickersJ); for(size_t i=0;i<n;i++){ json_t* sj=json_array_get(stickersJ,i); if(!sj||!json_is_object(sj)) continue; json_t* pathJ=json_object_get(sj,"path"); if(!(pathJ&&json_is_string(pathJ))) continue; StickerEntry e; e.path=json_string_value(pathJ); e.displayName=system::getFilename(e.path); json_t* d=json_object_get(sj,"displayName"); if(d&&json_is_string(d)) e.displayName=json_string_value(d); json_t* x=json_object_get(sj,"x"); if(x&&json_is_number(x)) e.x=json_number_value(x); json_t* y=json_object_get(sj,"y"); if(y&&json_is_number(y)) e.y=json_number_value(y); json_t* r=json_object_get(sj,"rotation"); if(r&&json_is_number(r)) e.rotation=json_number_value(r); loadStickerSvg(e); if(mode==MODE_SINGLE){ replaceSingleSticker(e); break; } addMultipleSticker(e);} }
@@ -308,7 +309,7 @@ struct StickerCanvas : Widget {
 struct SticksyBlankWidget : ModuleWidget {
 	int browserHpWidth = 5;
 	int lastPanelVersion=-1,lastStickerVersion=-1; StickerCanvas* stickerCanvas=NULL;
-		void applyPanelForBackground(SticksyBlankModule* module){ const auto& key=SticksyBlankModule::backgroundKeys()[module?module->background:SticksyBlankModule::BACKGROUND_METAL]; const std::string folder=module?module->panelFolder:(std::to_string(browserHpWidth)+"hp"); setPanel(createPanel(asset::plugin(pluginInstance,"res/panels/"+folder+"/"+key+".svg"))); }
+		void applyPanelForBackground(SticksyBlankModule* module){ const auto& key=SticksyBlankModule::backgroundKeys()[module?module->background:SticksyBlankModule::defaultBackground()]; const std::string folder=module?module->panelFolder:(std::to_string(browserHpWidth)+"hp"); setPanel(createPanel(asset::plugin(pluginInstance,"res/panels/"+folder+"/"+key+".svg"))); }
 
 	SticksyBlankWidget(SticksyBlankModule* module, int defaultHp=5){ setModule(module); browserHpWidth=defaultHp; box.size=math::Vec(RACK_GRID_WIDTH*(module?module->hpWidth:browserHpWidth), RACK_GRID_HEIGHT); applyPanelForBackground(module); stickerCanvas=new StickerCanvas(); stickerCanvas->box=box.zeroPos(); stickerCanvas->module=module; addChild(stickerCanvas);} 
 	void step() override { ModuleWidget::step(); auto* module=dynamic_cast<SticksyBlankModule*>(this->module); if(!module) return; if(module->panelVersion!=lastPanelVersion){ applyPanelForBackground(module); lastPanelVersion=module->panelVersion;} if(module->stickerVersion!=lastStickerVersion){ lastStickerVersion=module->stickerVersion; } }
