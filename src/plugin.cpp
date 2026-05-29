@@ -46,6 +46,22 @@ static std::string sticksyUserStickerLibraryPath() {
 	return system::join(sticksyUserLibraryPath(), STICKSY_STICKERS_FOLDER);
 }
 
+static std::string sticksyUserAnimationLibraryPath() {
+	return system::join(sticksyUserLibraryPath(), STICKSY_ANIMATION_FOLDER);
+}
+
+static std::string prepareSticksyBrowserInitialPath(const std::string& libraryPath) {
+	std::string sticksyDir = sticksyUserLibraryPath();
+	if(!createDirectoryIfMissing(sticksyDir)) return "";
+	if(!createDirectoryIfMissing(libraryPath)) return "";
+	if(!system::exists(libraryPath)) return "";
+	return libraryPath;
+}
+
+static bool firstBlankSvgBrowserOpen = true;
+static bool firstFlipbookImageBrowserOpen = true;
+static bool firstFlipbookBackgroundBrowserOpen = true;
+
 static void copySvgFilesIfMissing(const std::string& sourceDir, const std::string& destDir) {
 	if(!system::exists(sourceDir)) {
 		WARN("Sticksy: Default asset source folder '%s' does not exist", sourceDir.c_str());
@@ -262,7 +278,7 @@ struct SticksyBlankWidget : ModuleWidget {
 		struct ModeItem:MenuItem{ SticksyBlankModule* module; SticksyBlankModule::Mode mode; void onAction(const event::Action&) override { if(!module||!module->stickers.empty()||module->mode==mode) return; SticksyBlankModule* m=module; SticksyBlankModule::Mode selectedMode=mode; pushSticksyModuleChange(module,"change Sticksy mode",[m,selectedMode](){ m->setMode(selectedMode);}); } void step() override { MenuItem::step(); disabled=module&&!module->stickers.empty()&&module->mode!=mode; rightText=(module&&module->mode==mode)?"✔":""; }};
 		auto* s=createMenuItem<ModeItem>("Single"); s->module=module; s->mode=SticksyBlankModule::MODE_SINGLE; menu->addChild(s); auto* m=createMenuItem<ModeItem>("Multiple"); m->module=module; m->mode=SticksyBlankModule::MODE_MULTIPLE; menu->addChild(m);
 		if(module&&!module->stickers.empty()){ auto* hint=createMenuItem<MenuItem>("Delete loaded SVGs first"); hint->disabled=true; menu->addChild(hint);} 
-		struct LoadSvgItem:MenuItem{ SticksyBlankModule* module; void onAction(const event::Action&) override { if(!module) return; osdialog_filters* filters=osdialog_filters_parse("Scalable Vector Graphic (.svg):svg"); char* pathC=osdialog_file(OSDIALOG_OPEN,NULL,NULL,filters); osdialog_filters_free(filters); if(!pathC) return; std::string selectedPath=pathC; std::free(pathC); if(selectedPath.empty()||!hasSvgExtension(selectedPath)) return; StickerEntry e; std::string storedPath=module->resolveStickerPathForLoad(selectedPath); e.path=storedPath; e.displayName=system::getFilename(storedPath); module->loadStickerSvg(e); if(module->mode==SticksyBlankModule::MODE_MULTIPLE) module->assignPlacementForMultiple(e); SticksyBlankModule* m=module; StickerEntry newEntry=e; pushSticksyModuleChange(module,"load Sticksy SVG",[m,newEntry](){ if(m->mode==SticksyBlankModule::MODE_SINGLE) m->replaceSingleSticker(newEntry); else m->addMultipleSticker(newEntry);}); }};
+		struct LoadSvgItem:MenuItem{ SticksyBlankModule* module; void onAction(const event::Action&) override { if(!module) return; osdialog_filters* filters=osdialog_filters_parse("Scalable Vector Graphic (.svg):svg"); std::string initialPath; if(firstBlankSvgBrowserOpen) initialPath=prepareSticksyBrowserInitialPath(sticksyUserStickerLibraryPath()); firstBlankSvgBrowserOpen=false; char* pathC=osdialog_file(OSDIALOG_OPEN,initialPath.empty()?NULL:initialPath.c_str(),NULL,filters); osdialog_filters_free(filters); if(!pathC) return; std::string selectedPath=pathC; std::free(pathC); if(selectedPath.empty()||!hasSvgExtension(selectedPath)) return; StickerEntry e; std::string storedPath=module->resolveStickerPathForLoad(selectedPath); e.path=storedPath; e.displayName=system::getFilename(storedPath); module->loadStickerSvg(e); if(module->mode==SticksyBlankModule::MODE_MULTIPLE) module->assignPlacementForMultiple(e); SticksyBlankModule* m=module; StickerEntry newEntry=e; pushSticksyModuleChange(module,"load Sticksy SVG",[m,newEntry](){ if(m->mode==SticksyBlankModule::MODE_SINGLE) m->replaceSingleSticker(newEntry); else m->addMultipleSticker(newEntry);}); }};
 		auto* load=createMenuItem<LoadSvgItem>("Load SVG..."); load->module=module; menu->addChild(load);
 		if(module&&module->mode==SticksyBlankModule::MODE_MULTIPLE){ struct ShakeItem:MenuItem{ SticksyBlankModule* module; void onAction(const event::Action&) override { if(!module||module->mode!=SticksyBlankModule::MODE_MULTIPLE||module->stickers.empty()) return; SticksyBlankModule* m=module; pushSticksyModuleChange(module,"shake Sticksy stickers",[m](){ m->shakeMultipleStickers();}); } void step() override { MenuItem::step(); disabled=!module||module->mode!=SticksyBlankModule::MODE_MULTIPLE||module->stickers.empty(); }}; auto* shake=createMenuItem<ShakeItem>("Shake"); shake->module=module; menu->addChild(shake);} 
 		menu->addChild(new MenuSeparator()); auto* stLabel=new MenuLabel(); stLabel->text="Storage"; menu->addChild(stLabel);
@@ -663,7 +679,10 @@ struct SticksyFlipbookWidget : ModuleWidget {
 			void onAction(const event::Action&) override {
 				if(!module) return;
 				osdialog_filters* filters = osdialog_filters_parse("Scalable Vector Graphic (.svg):svg");
-				char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);
+				std::string initialPath;
+				if(firstFlipbookImageBrowserOpen) initialPath = prepareSticksyBrowserInitialPath(sticksyUserAnimationLibraryPath());
+				firstFlipbookImageBrowserOpen = false;
+				char* pathC = osdialog_file(OSDIALOG_OPEN, initialPath.empty() ? NULL : initialPath.c_str(), NULL, filters);
 				osdialog_filters_free(filters);
 				if(!pathC) return;
 				std::string selectedPath = pathC;
@@ -684,7 +703,10 @@ struct SticksyFlipbookWidget : ModuleWidget {
 			void onAction(const event::Action&) override {
 				if(!module) return;
 				osdialog_filters* filters = osdialog_filters_parse("Scalable Vector Graphic (.svg):svg");
-				char* pathC = osdialog_file(OSDIALOG_OPEN, NULL, NULL, filters);
+				std::string initialPath;
+				if(firstFlipbookBackgroundBrowserOpen) initialPath = prepareSticksyBrowserInitialPath(sticksyUserStickerLibraryPath());
+				firstFlipbookBackgroundBrowserOpen = false;
+				char* pathC = osdialog_file(OSDIALOG_OPEN, initialPath.empty() ? NULL : initialPath.c_str(), NULL, filters);
 				osdialog_filters_free(filters);
 				if(!pathC) return;
 				std::string selectedPath = pathC;
