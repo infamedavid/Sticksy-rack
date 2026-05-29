@@ -11,7 +11,7 @@ Sticksy is a decorative SVG sticker plugin for VCV Rack.
 
 Right-click on the panel. Everything is in the context menu.
 
-![Sticksy menu](assets/sticksy-menu1.png)
+![Sticksy menu 1](assets/imenu1.png)
 
 ### Sticksy Blank
 
@@ -31,7 +31,7 @@ Sticksy Flipbook plays an SVG image sequence with a clock.
 
 Use **Load Flipbook Image...** and select any SVG from a numbered sequence.
 
-![Sticksy menu](assets/sticksy-menu2.png)
+![Sticksy menu 2](assets/rmenu2.png)
 
 Example:
 
@@ -40,4 +40,4 @@ gato_01.svg
 gato_02.svg
 gato_03.svg
 
-![Sticksy menu](assets/animatedinput.png)
+![Animated input](assets/animatedinput.png)
