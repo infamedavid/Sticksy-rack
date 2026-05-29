@@ -25,7 +25,7 @@ Right-click on the panel.
 
 Locked stickers can still be removed with **Delete**.
 
-### Sticksy Flipbook 😺
+### 😺 Sticksy Flipbook 
 
 Sticksy Flipbook plays an SVG image sequence with a clock.
 
