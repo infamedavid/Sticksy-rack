@@ -4,12 +4,12 @@
   "version": "2.0.0",
   "author": "InfameDavid",
   "brand": "InfameDavid",
+  "license": "GPL-3.0-or-later",
   "authorUrl": "https://infamedavid.gumroad.com/",
   "pluginUrl": "https://github.com/infamedavid/Sticksy-rack",
   "manualUrl": "https://github.com/infamedavid/Sticksy-rack",
   "sourceUrl": "https://github.com/infamedavid/Sticksy-rack",
   "donateUrl": "https://paypal.me/Davidb3d",
-  "changelogUrl": "",
   "modules": [
     {
       "slug": "SticksyBlank3",
@@ -38,8 +38,8 @@
     {
       "slug": "SticksyFlipbook",
       "name": "Sticksy Flipbook",
-      "description": "Decorative flipbook panel",
-      "tags": ["Blank"]
+      "description": "Decorative SVG flipbook panel.",
+      "tags": ["Visual"]
     }
   ]
 }
