@@ -30,6 +30,9 @@ static const std::string DEFAULT_STICKERS_TEMPLATE_PATH = "res/default/Stickers"
 static const std::string DEFAULT_VC_CAT_TEMPLATE_PATH = "res/default/Animation/vc_cat";
 
 static bool hasSvgExtension(const std::string& pathOrFilename);
+static std::string normalizePathForCompare(const std::string& path);
+static bool isPathInsideDirectory(const std::string& path, const std::string& directory);
+static bool isFallbackStickerPath(const std::string& path);
 
 static bool createDirectoryIfMissing(const std::string& path) {
 	if(system::exists(path)) return true;
@@ -106,6 +109,31 @@ static void ensureDefaultSticksyLibraryInstalled() {
 	copySvgFilesIfMissing(asset::plugin(pluginInstance, DEFAULT_VC_CAT_TEMPLATE_PATH), vcCatDir);
 }
 
+
+static std::string normalizePathForCompare(const std::string& path) {
+	std::string normalized = path;
+	std::replace(normalized.begin(), normalized.end(), '\\', '/');
+	while(normalized.size() > 1 && normalized[normalized.size() - 1] == '/') normalized.erase(normalized.size() - 1);
+	return string::lowercase(normalized);
+}
+
+static bool isPathInsideDirectory(const std::string& path, const std::string& directory) {
+	if(path.empty() || directory.empty()) return false;
+	std::string normalizedPath = normalizePathForCompare(path);
+	std::string normalizedDir = normalizePathForCompare(directory);
+	if(normalizedPath == normalizedDir) return true;
+	if(normalizedDir.empty()) return false;
+	std::string prefix = normalizedDir + "/";
+	return normalizedPath.size() > prefix.size() && normalizedPath.substr(0, prefix.size()) == prefix;
+}
+
+static bool isFallbackStickerPath(const std::string& path) {
+	if(path.empty()) return false;
+	std::string normalizedPath = normalizePathForCompare(path);
+	if(normalizedPath == normalizePathForCompare(FALLBACK_STICKER_PATH)) return true;
+	return normalizedPath == normalizePathForCompare(asset::plugin(pluginInstance, FALLBACK_STICKER_PATH));
+}
+
 static bool hasSvgExtension(const std::string& pathOrFilename) {
 	std::string ext = system::getExtension(pathOrFilename);
 	ext = string::lowercase(ext);
@@ -174,25 +202,52 @@ struct SticksyBlankModule : Module {
 
 	void setBackground(Background b){ if(b<0||b>=NUM_BACKGROUNDS) b=BACKGROUND_METAL; if(background==b) return; background=b; panelVersion++; }
 	void setMode(Mode m){ if(m<0||m>=NUM_MODES) m=MODE_SINGLE; if(!stickers.empty()) return; if(mode==m) return; mode=m; stickerVersion++; }
-	void setStorageMode(StorageMode s){ if(s<0||s>=NUM_STORAGE_MODES) s=STORAGE_REFERENCED; if(storageMode==s) return; storageMode=s; stickerVersion++; }
+	void setStorageMode(StorageMode s){ if(s<0||s>=NUM_STORAGE_MODES) s=STORAGE_REFERENCED; if(storageMode==s) return; storageMode=s; if(storageMode==STORAGE_STICKSY_LIBRARY) migrateStickersToLibrary(); stickerVersion++; }
 	void replaceSingleSticker(const StickerEntry& e){ stickers.clear(); stickers.push_back(e); stickerVersion++; }
 	void addMultipleSticker(const StickerEntry& e){ stickers.push_back(e); stickerVersion++; }
 	void clearStickers(){ if(stickers.empty()) return; stickers.clear(); stickerVersion++; }
 
-	std::string ensureLibraryCopyPath(const std::string& sourcePath) {
+	std::string duplicateSafeLibraryPath(const std::string& sourcePath) {
 		std::string filename=system::getFilename(sourcePath);
-		if(filename.empty()) return sourcePath;
+		if(filename.empty()) return "";
 		std::string stem = stripFinalSvgExtension(filename);
 		if(stem.empty()) stem = filename;
-		std::string sticksyDir=sticksyUserLibraryPath();
-		if(!createDirectoryIfMissing(sticksyDir)) return sourcePath;
 		std::string libraryDir=sticksyUserStickerLibraryPath();
-		if(!createDirectoryIfMissing(libraryDir)) return sourcePath;
 		std::string candidate=system::join(libraryDir,filename); int suffix=1;
 		while(system::exists(candidate)){ std::ostringstream name; name<<stem<<"_"<<std::setfill('0')<<std::setw(3)<<suffix++<<SVG_EXTENSION_WITH_DOT; candidate=system::join(libraryDir,name.str()); }
-		if(!system::copy(sourcePath,candidate)) return sourcePath;
 		return candidate;
 	}
+
+	std::string ensureLibraryCopyPath(const std::string& sourcePath) {
+		if(sourcePath.empty() || isFallbackStickerPath(sourcePath)) return sourcePath;
+		std::string libraryDir=sticksyUserStickerLibraryPath();
+		if(isPathInsideDirectory(sourcePath, libraryDir)) return sourcePath;
+		if(!system::exists(sourcePath)) return sourcePath;
+		std::string sticksyDir=sticksyUserLibraryPath();
+		if(!createDirectoryIfMissing(sticksyDir)) return sourcePath;
+		if(!createDirectoryIfMissing(libraryDir)) return sourcePath;
+		std::string candidate=duplicateSafeLibraryPath(sourcePath);
+		if(candidate.empty()) return sourcePath;
+		if(!system::copy(sourcePath,candidate)) {
+			WARN("Sticksy: Could not copy sticker '%s' to Sticksy library path '%s'", sourcePath.c_str(), candidate.c_str());
+			return sourcePath;
+		}
+		return candidate;
+	}
+
+	void migrateStickersToLibrary() {
+		std::string sticksyDir=sticksyUserLibraryPath();
+		if(!createDirectoryIfMissing(sticksyDir)) return;
+		std::string libraryDir=sticksyUserStickerLibraryPath();
+		if(!createDirectoryIfMissing(libraryDir)) return;
+		for(StickerEntry& sticker : stickers) {
+			std::string migratedPath=ensureLibraryCopyPath(sticker.path);
+			if(migratedPath == sticker.path) continue;
+			sticker.path=migratedPath;
+			loadStickerSvg(sticker);
+		}
+	}
+
 	std::string resolveStickerPathForLoad(const std::string& selectedPath){ return storageMode==STORAGE_STICKSY_LIBRARY ? ensureLibraryCopyPath(selectedPath) : selectedPath; }
 
 	static bool isValidSvg(const std::shared_ptr<window::Svg>& svg) {
