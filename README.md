@@ -40,3 +40,5 @@ gato_02.svg
 gato_03.svg
 
 ![Animated input](assets/animatedinput.png)
+
+Stickers and arimation are included!
