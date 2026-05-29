@@ -38,7 +38,7 @@
     {
       "slug": "SticksyFlipbook",
       "name": "Sticksy Flipbook",
-      "description": "Decorative flipbook panel with CLK and EOC jacks.",
+      "description": "Decorative flipbook panel with CLK, RST, and EOC jacks.",
       "tags": ["Blank"]
     }
   ]
