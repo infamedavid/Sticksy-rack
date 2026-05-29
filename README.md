@@ -7,9 +7,9 @@ Sticksy is a decorative SVG sticker plugin for VCV Rack.
 </a>
 
 
-## QUICK START
+## QUICK START:
 
-Right-click on the panel. Everything is in the context menu.
+Right-click on the panel.
 
 ![Sticksy menu 1](assets/imenu1.png)
 
