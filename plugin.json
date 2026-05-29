@@ -5,8 +5,8 @@
   "author": "InfameDavid",
   "brand": "InfameDavid",
   "authorUrl": "https://infamedavid.gumroad.com/",
-  "pluginUrl": "",
-  "manualUrl": "",
+  "pluginUrl": "https://github.com/infamedavid/Sticksy-rack",
+  "manualUrl": "https://github.com/infamedavid/Sticksy-rack",
   "sourceUrl": "https://github.com/infamedavid/Sticksy-rack",
   "donateUrl": "https://paypal.me/Davidb3d",
   "changelogUrl": "",
@@ -38,7 +38,7 @@
     {
       "slug": "SticksyFlipbook",
       "name": "Sticksy Flipbook",
-      "description": "Decorative flipbook panel with CLK, RST, and EOC jacks.",
+      "description": "Decorative flipbook panel",
       "tags": ["Blank"]
     }
   ]
