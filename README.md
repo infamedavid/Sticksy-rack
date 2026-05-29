@@ -13,7 +13,7 @@ Right-click on the panel.
 
 ![Sticksy menu 1](assets/imenu1.png)
 
-### Sticksy Blank
+### Sticksy Blank 
 
 **Single** loads one SVG image centered on the panel.
 
@@ -25,7 +25,7 @@ Right-click on the panel.
 
 Locked stickers can still be removed with **Delete**.
 
-### Sticksy Flipbook
+### Sticksy Flipbook 😺
 
 Sticksy Flipbook plays an SVG image sequence with a clock.
 
